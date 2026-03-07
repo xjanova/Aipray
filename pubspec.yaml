@@ -20,7 +20,7 @@ dependencies:
   flutter_animate: ^4.5.2
   vibration: ^2.0.0
   http: ^1.2.2
-  record: ^5.2.0
+  record: ^6.2.0
   device_info_plus: ^11.0.0
 
 dev_dependencies:
