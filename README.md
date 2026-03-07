@@ -1,30 +1,78 @@
-# Prayer Sync Demo (ต้นแบบแอพตามบทสวดอัตโนมัติ)
+# Aipray - สวดมนต์อัจฉริยะ
 
-ผมทำ **ต้นแบบแอพใช้งานได้จริง** ให้แล้วในรูปแบบ Web App ที่สามารถ:
+AI-powered Buddhist chanting companion app with voice tracking, auto-scroll, and intelligent line matching.
 
-- แสดงบทสวดหลายบท
-- ฟังเสียงสดผ่านไมโครโฟน (ผ่าน Web Speech API)
-- จับคู่ข้อความที่ได้กับบรรทัดบทสวด
-- ไฮไลต์บรรทัดปัจจุบัน + บรรทัดถัดไป
-- เลื่อนหน้าจออัตโนมัติให้บรรทัดปัจจุบันอยู่กลางจอ
-- มีโหมดจำลองเสียงสวดเพื่อเดโมแม้เครื่องไม่รองรับไมค์
+## Features
 
-## วิธีรัน
+- 20+ Buddhist chants (อิติปิโส, พาหุง, ชินบัญชร, มงคลสูตร, etc.)
+- Voice recognition with auto-scroll tracking
+- Round counter and session timer
+- Prayer history with statistics
+- Simulation mode for testing
+- Beautiful dark temple-inspired theme (gold/amber)
+- Offline-first design
+- Cross-platform: Android, iOS, Web
+
+## Tech Stack
+
+- **Frontend**: Flutter 3.38+ / Dart 3.10+
+- **ASR (planned)**: Sherpa-ONNX Thai model for on-device recognition
+- **Backend (planned)**: xmanstudio (Laravel) for AI training data collection
+- **AI Training (planned)**: Whisper Thai fine-tuning via HuggingFace
+
+## Getting Started
 
 ```bash
-python3 -m http.server 4173
+# Install dependencies
+flutter pub get
+
+# Run on web
+flutter run -d chrome
+
+# Run on Android/iOS
+flutter run
+
+# Build web
+flutter build web --release
+
+# Build Android APK
+flutter build apk --release
+
+# Build iOS
+flutter build ios --release
 ```
 
-เปิดเบราว์เซอร์ที่ `http://localhost:4173`
+## Project Structure
 
-## ไฟล์สำคัญ
+```
+lib/
+├── main.dart                    # App entry point
+├── config/theme.dart            # Temple-inspired dark theme
+├── models/
+│   ├── chant.dart               # Chant & ChantLine models
+│   └── prayer_session.dart      # Session tracking model
+├── services/
+│   ├── storage_service.dart     # Local persistence (SharedPreferences)
+│   └── chant_matcher.dart       # Thai text matching algorithm
+├── screens/
+│   ├── main_shell.dart          # Bottom navigation shell
+│   ├── home_screen.dart         # Dashboard with quick actions
+│   ├── chant_list_screen.dart   # Browse & search chants
+│   ├── chant_detail_screen.dart # View chant with font size control
+│   ├── prayer_session_screen.dart # Active prayer with tracking
+│   ├── history_screen.dart      # Prayer history & stats
+│   └── settings_screen.dart     # App settings
+└── data/chants/
+    └── all_chants.dart          # 20+ Buddhist chant database
+```
 
-- `index.html` : โครงหน้าจอและปุ่มควบคุม
-- `style.css` : ธีมและรูปแบบการไฮไลต์/auto-scroll
-- `chants.js` : คลังบทสวด + index สำหรับจับคู่
-- `app.js` : logic การฟังเสียง, matching, ติดตามบรรทัด, และเลื่อนอัตโนมัติ
+## Roadmap
 
-## หมายเหตุ
+- [ ] Phase 2: Sherpa-ONNX on-device speech recognition
+- [ ] Phase 3: xmanstudio backend integration for data sync
+- [ ] Phase 4: AI training pipeline (Whisper fine-tuning)
+- [ ] Phase 5: App Store deployment (iOS + Android)
 
-- โหมดฟังสดต้องใช้เบราว์เซอร์ที่รองรับ `SpeechRecognition` (เช่น Chrome)
-- สำหรับ production ควรเปลี่ยนจาก Web Speech API ไปเป็น on-device ASR/streaming pipeline เพื่อความแม่นยำและเสถียรภาพสูงขึ้น
+## Developer
+
+Built by [xjanova](https://github.com/xjanova)
