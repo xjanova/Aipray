@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prayer Sync Demo</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="topbar">
+        <h1>Prayer Sync Demo</h1>
+        <p>ฟังเสียงสวด แล้วเลื่อนไปบรรทัดที่ตรงอัตโนมัติ</p>
+      </header>
+
+      <section class="controls">
+        <button id="toggleListenBtn" class="primary">🎙️ เริ่มฟังสด</button>
+        <button id="simulateBtn" class="secondary">▶️ จำลองเสียงสวด</button>
+        <label class="switch">
+          <input id="autoScrollToggle" type="checkbox" checked />
+          <span>Auto Scroll</span>
+        </label>
+      </section>
+
+      <section class="status" id="statusBox">
+        <div><strong>สถานะ:</strong> <span id="statusText">พร้อม</span></div>
+        <div><strong>บทปัจจุบัน:</strong> <span id="chantName">-</span></div>
+        <div><strong>บรรทัด:</strong> <span id="lineIndex">-</span></div>
+        <div><strong>ข้อความล่าสุด:</strong> <span id="liveText">-</span></div>
+      </section>
+
+      <section id="chantContainer" class="chant-container"></section>
+    </main>
+
+    <script src="chants.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
