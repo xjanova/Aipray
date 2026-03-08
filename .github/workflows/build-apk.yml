@@ -1,0 +1,102 @@
+name: Build & Release APK
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_name:
+        description: 'Release name (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.38.5'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze code
+        run: flutter analyze --no-fatal-infos
+
+      - name: Build APK (fat APK - all ABIs)
+        run: flutter build apk --release
+
+      - name: Build APK (split per ABI - smaller size)
+        run: flutter build apk --release --split-per-abi
+
+      - name: Rename APKs
+        run: |
+          VERSION="${GITHUB_REF_NAME:-${{ github.event.inputs.release_name }}}"
+          VERSION="${VERSION#v}"
+
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             build/app/outputs/flutter-apk/aipray-${VERSION}-universal.apk
+
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
+             build/app/outputs/flutter-apk/aipray-${VERSION}-arm64.apk
+
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
+             build/app/outputs/flutter-apk/aipray-${VERSION}-arm32.apk
+
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk \
+             build/app/outputs/flutter-apk/aipray-${VERSION}-x86_64.apk
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-release
+          path: |
+            build/app/outputs/flutter-apk/aipray-*.apk
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name || github.event.inputs.release_name }}
+          name: "Aipray ${{ github.ref_name || github.event.inputs.release_name }}"
+          body: |
+            ## Aipray - สวดมนต์อัจฉริยะ
+
+            ### ดาวน์โหลด APK
+            - **aipray-universal.apk** — ใช้ได้กับทุกอุปกรณ์ (แนะนำ)
+            - **aipray-arm64.apk** — สำหรับมือถือรุ่นใหม่ (เล็กกว่า)
+            - **aipray-arm32.apk** — สำหรับมือถือรุ่นเก่า
+
+            ### วิธีติดตั้ง
+            1. ดาวน์โหลดไฟล์ APK ที่ตรงกับอุปกรณ์ (ไม่แน่ใจให้เลือก universal)
+            2. เปิดไฟล์บนมือถือ Android
+            3. อนุญาต "ติดตั้งจากแหล่งที่ไม่รู้จัก" ถ้ามี popup
+            4. กด "ติดตั้ง"
+
+            ### คุณสมบัติ
+            - บทสวดมนต์ 20+ บท พร้อมตัวอักษรไทย
+            - ฟังเสียงสวดจับตำแหน่งอัตโนมัติ (AI)
+            - นับรอบอัตโนมัติ พร้อมสั่นเตือน
+            - บันทึกประวัติการสวดมนต์
+            - ร่วมบริจาคเสียงเพื่อพัฒนา AI
+            - ใช้งานออฟไลน์ได้
+          files: |
+            build/app/outputs/flutter-apk/aipray-*.apk
+          draft: false
+          prerelease: false
