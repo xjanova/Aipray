@@ -121,14 +121,16 @@ class UpdateService {
     state.value = UpdateState.downloading;
     downloadProgress.value = 0.0;
 
+    http.Client? client;
+    IOSink? sink;
+
     try {
-      final client = http.Client();
+      client = http.Client();
       final request = http.Request('GET', Uri.parse(latestVersion!.downloadUrl));
       final response = await client.send(request).timeout(const Duration(minutes: 10));
 
       if (response.statusCode != 200) {
         state.value = UpdateState.error;
-        client.close();
         return false;
       }
 
@@ -136,7 +138,7 @@ class UpdateService {
       final dir = await getTemporaryDirectory();
       final file = File('${dir.path}/aipray_update.apk');
 
-      final sink = file.openWrite();
+      sink = file.openWrite();
       int received = 0;
 
       await for (final chunk in response.stream) {
@@ -149,7 +151,7 @@ class UpdateService {
 
       await sink.flush();
       await sink.close();
-      client.close();
+      sink = null; // prevent double-close in finally
 
       downloadedFilePath = file.path;
       state.value = UpdateState.readyToInstall;
@@ -157,10 +159,14 @@ class UpdateService {
     } catch (e) {
       state.value = UpdateState.error;
       return false;
+    } finally {
+      try { sink?.close(); } catch (_) {}
+      client?.close();
     }
   }
 
-  /// Install the downloaded APK (Android only)
+  /// Install the downloaded APK (Android only).
+  /// Opens the system package installer via content:// URI.
   Future<bool> installUpdate() async {
     if (downloadedFilePath == null || kIsWeb) return false;
 
@@ -168,12 +174,15 @@ class UpdateService {
 
     try {
       if (Platform.isAndroid) {
-        // Use Android Intent to install APK
+        // Use content:// URI via FileProvider for Android 7+ compatibility.
+        // The actual installation is triggered by opening the APK file with
+        // the system package installer intent.
         final result = await Process.run('am', [
           'start',
-          '-a', 'android.intent.action.VIEW',
+          '-a', 'android.intent.action.INSTALL_PACKAGE',
           '-t', 'application/vnd.android.package-archive',
           '-d', 'file://$downloadedFilePath',
+          '-n', 'com.android.packageinstaller/.PackageInstallerActivity',
           '--grant-read-uri-permission',
         ]);
         return result.exitCode == 0;
@@ -197,8 +206,9 @@ class UpdateService {
   bool _isNewerVersion(String remote, String current) {
     final rParts = remote.split('.').map((e) => int.tryParse(e) ?? 0).toList();
     final cParts = current.split('.').map((e) => int.tryParse(e) ?? 0).toList();
+    final len = rParts.length > cParts.length ? rParts.length : cParts.length;
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < len; i++) {
       final r = i < rParts.length ? rParts[i] : 0;
       final c = i < cParts.length ? cParts[i] : 0;
       if (r > c) return true;

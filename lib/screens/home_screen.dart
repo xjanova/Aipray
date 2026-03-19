@@ -38,43 +38,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _checkStreak() {
-    final streak = _calculateStreak();
+    final streak = storageService.streak;
     if (streak > 0 && streak % 7 == 0) {
       _showStreakCelebration = true;
       _streakController.forward();
     }
   }
 
-  void _checkForUpdates() async {
-    await Future.delayed(const Duration(seconds: 3));
-    if (!mounted) return;
-    final result = await updateService.checkForUpdate();
-    if (result == UpdateCheckResult.updateAvailable && mounted) {
-      UpdateDialog.show(context, updateService);
-    }
-  }
-
-  int _calculateStreak() {
-    final sessions = storageService.getSessions();
-    if (sessions.isEmpty) return 0;
-    int streak = 0;
-    DateTime checkDate = DateTime.now();
-    for (int i = 0; i < 365; i++) {
-      final dayStart = DateTime(checkDate.year, checkDate.month, checkDate.day);
-      final dayEnd = dayStart.add(const Duration(days: 1));
-      final hasSession = sessions.any((s) =>
-          s.startTime.isAfter(dayStart) && s.startTime.isBefore(dayEnd));
-      if (hasSession) {
-        streak++;
-        checkDate = checkDate.subtract(const Duration(days: 1));
-      } else if (i == 0) {
-        // Today hasn't been done yet, check from yesterday
-        checkDate = checkDate.subtract(const Duration(days: 1));
-      } else {
-        break;
+  Future<void> _checkForUpdates() async {
+    try {
+      await Future.delayed(const Duration(seconds: 3));
+      if (!mounted) return;
+      final result = await updateService.checkForUpdate();
+      if (result == UpdateCheckResult.updateAvailable && mounted) {
+        UpdateDialog.show(context, updateService);
       }
+    } catch (_) {
+      // Silently ignore update check failures
     }
-    return streak;
   }
 
   @override
@@ -89,8 +70,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     final favIds = storageService.getFavorites();
     final favorites = allChants.where((c) => favIds.contains(c.id)).toList();
     final recommended = _getSmartRecommendations();
-    final streak = _calculateStreak();
+    final streak = storageService.streak;
     final greeting = _getTimeGreeting();
+    final dailyChants = allChants.where((c) => c.category == ChantCategory.daily).toList();
 
     return SafeArea(
       child: CustomScrollView(
@@ -148,7 +130,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                             Text(
                               greeting.subtitle,
                               style: const TextStyle(
-                                color: Color(0xFFA09880),
+                                color: AiprayTheme.textSecondary,
                                 fontSize: 13,
                               ),
                             ),
@@ -196,6 +178,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: _SmartStatsCard(
                 streak: streak,
+                sessions: storageService.totalSessions,
+                time: storageService.totalPrayerTimeFormatted,
+                rounds: storageService.totalRounds,
                 showCelebration: _showStreakCelebration,
                 animation: _streakController,
               ),
@@ -368,15 +353,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
           SliverList(
             delegate: SliverChildBuilderDelegate(
-              (context, i) {
-                final dailyChants = allChants
-                    .where((c) => c.category == ChantCategory.daily)
-                    .toList();
-                return _ChantTile(chant: dailyChants[i]);
-              },
-              childCount: allChants
-                  .where((c) => c.category == ChantCategory.daily)
-                  .length,
+              (context, i) => _ChantTile(chant: dailyChants[i]),
+              childCount: dailyChants.length,
             ),
           ),
 
@@ -510,20 +488,23 @@ class _Recommendation {
 // === Smart Stats Card with streak ===
 class _SmartStatsCard extends StatelessWidget {
   final int streak;
+  final int sessions;
+  final String time;
+  final int rounds;
   final bool showCelebration;
   final Animation<double> animation;
 
   const _SmartStatsCard({
     required this.streak,
+    required this.sessions,
+    required this.time,
+    required this.rounds,
     required this.showCelebration,
     required this.animation,
   });
 
   @override
   Widget build(BuildContext context) {
-    final sessions = storageService.totalSessions;
-    final time = storageService.totalPrayerTimeFormatted;
-    final rounds = storageService.totalRounds;
 
     return Container(
       padding: const EdgeInsets.all(18),
@@ -661,7 +642,7 @@ class _StatItem extends StatelessWidget {
         Text(
           value,
           style: const TextStyle(
-            color: Color(0xFFD4A647),
+            color: AiprayTheme.gold,
             fontSize: 20,
             fontWeight: FontWeight.bold,
           ),
@@ -669,7 +650,7 @@ class _StatItem extends StatelessWidget {
         const SizedBox(height: 2),
         Text(
           label,
-          style: const TextStyle(color: Color(0xFFA09880), fontSize: 10),
+          style: const TextStyle(color: AiprayTheme.textSecondary, fontSize: 10),
         ),
       ],
     );
@@ -822,7 +803,7 @@ class _QuickStartCard extends StatelessWidget {
             ),
             Text(
               subtitle,
-              style: const TextStyle(color: Color(0xFFA09880), fontSize: 11),
+              style: const TextStyle(color: AiprayTheme.textSecondary, fontSize: 11),
             ),
           ],
         ),
@@ -886,7 +867,7 @@ class _ChantTile extends StatelessWidget {
                         Text(
                           chant.subtitle!,
                           style: const TextStyle(
-                            color: Color(0xFFA09880),
+                            color: AiprayTheme.textSecondary,
                             fontSize: 12,
                           ),
                         ),
@@ -896,12 +877,12 @@ class _ChantTile extends StatelessWidget {
                 Text(
                   '${chant.lineCount} บรรทัด',
                   style: const TextStyle(
-                    color: Color(0xFFA09880),
+                    color: AiprayTheme.textSecondary,
                     fontSize: 12,
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Icon(Icons.chevron_right, color: Color(0xFFA09880)),
+                const Icon(Icons.chevron_right, color: AiprayTheme.textSecondary),
               ],
             ),
           ),
@@ -1033,7 +1014,7 @@ class _ChantPickerSheet extends StatelessWidget {
                       style: const TextStyle(color: Colors.white)),
                   subtitle: chant.subtitle != null
                       ? Text(chant.subtitle!,
-                          style: const TextStyle(color: Color(0xFFA09880)))
+                          style: const TextStyle(color: AiprayTheme.textSecondary))
                       : null,
                   trailing: const Icon(Icons.play_arrow,
                       color: Color(0xFFD4A647)),

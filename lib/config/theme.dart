@@ -18,6 +18,10 @@ class AiprayTheme {
   static const activeLineColor = _activeLineGreen;
   static const nextLineColor = _nextLineBlue;
   static const cardColor = _cardDark;
+  static const bgDark = _bgDark;
+  static const surfaceDark = _surfaceDark;
+  static const textPrimary = _textPrimary;
+  static const textSecondary = _textSecondary;
 
   static ThemeData get darkTheme {
     final textTheme = GoogleFonts.notoSansThaiTextTheme(

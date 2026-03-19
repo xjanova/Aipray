@@ -19,12 +19,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
     _loadSessions();
   }
 
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    _loadSessions();
-  }
-
   void _loadSessions() {
     setState(() {
       _sessions = storageService.getSessions();
@@ -34,79 +28,85 @@ class _HistoryScreenState extends State<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     return SafeArea(
+      child: _sessions.isEmpty
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildHeader(context),
+                const Expanded(child: _EmptyState()),
+              ],
+            )
+          : RefreshIndicator(
+              onRefresh: () async => _loadSessions(),
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(child: _buildHeader(context)),
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverToBoxAdapter(
+                      child: Column(
+                        children: [
+                          _SummaryCard(sessions: _sessions),
+                          const SizedBox(height: 16),
+                          _WeeklyHeatmap(sessions: _sessions),
+                          const SizedBox(height: 16),
+                          _InsightsCard(sessions: _sessions),
+                          const SizedBox(height: 16),
+                          _TopChantsCard(sessions: _sessions),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Icon(Icons.history, color: AiprayTheme.textSecondary, size: 16),
+                              const SizedBox(width: 8),
+                              Text(
+                                'รายการทั้งหมด',
+                                style: TextStyle(
+                                  color: AiprayTheme.textSecondary,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Lazy session list
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) => _SessionTile(session: _sessions[i]),
+                        childCount: _sessions.length,
+                      ),
+                    ),
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildHeader(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'ประวัติการสวดมนต์',
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        color: AiprayTheme.gold,
-                        fontWeight: FontWeight.bold,
-                      ),
+          Text(
+            'ประวัติการสวดมนต์',
+            style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                  color: AiprayTheme.gold,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'รวม ${_sessions.length} ครั้ง',
-                  style: const TextStyle(color: Color(0xFFA09880)),
-                ),
-              ],
-            ),
           ),
-
-          Expanded(
-            child: _sessions.isEmpty
-                ? _EmptyState()
-                : RefreshIndicator(
-                    onRefresh: () async => _loadSessions(),
-                    child: ListView(
-                      padding: const EdgeInsets.all(20),
-                      children: [
-                        // Summary card
-                        _SummaryCard(sessions: _sessions),
-                        const SizedBox(height: 16),
-
-                        // Weekly heatmap
-                        _WeeklyHeatmap(sessions: _sessions),
-                        const SizedBox(height: 16),
-
-                        // AI Insights
-                        _InsightsCard(sessions: _sessions),
-                        const SizedBox(height: 16),
-
-                        // Top chants
-                        _TopChantsCard(sessions: _sessions),
-                        const SizedBox(height: 16),
-
-                        // Session list header
-                        Row(
-                          children: [
-                            const Icon(Icons.history, color: Color(0xFFA09880), size: 16),
-                            const SizedBox(width: 8),
-                            const Text(
-                              'รายการทั้งหมด',
-                              style: TextStyle(
-                                color: Color(0xFFA09880),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-
-                        // Session tiles
-                        ...List.generate(
-                          _sessions.length,
-                          (i) => _SessionTile(session: _sessions[i]),
-                        ),
-                      ],
-                    ),
-                  ),
+          const SizedBox(height: 4),
+          Text(
+            'รวม ${_sessions.length} ครั้ง',
+            style: TextStyle(color: AiprayTheme.textSecondary),
           ),
         ],
       ),
@@ -125,7 +125,7 @@ class _EmptyState extends StatelessWidget {
               color: AiprayTheme.gold.withValues(alpha: 0.3)),
           const SizedBox(height: 16),
           const Text('ยังไม่มีประวัติ',
-              style: TextStyle(color: Color(0xFFA09880), fontSize: 16)),
+              style: TextStyle(color: AiprayTheme.textSecondary, fontSize: 16)),
           const SizedBox(height: 4),
           const Text('เริ่มสวดมนต์เพื่อบันทึกประวัติ',
               style: TextStyle(color: Color(0xFF666666), fontSize: 13)),
@@ -463,10 +463,6 @@ class _SummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalRounds = sessions.fold(0, (s, e) => s + e.roundsCompleted);
-    final totalDuration = sessions.fold(Duration.zero, (s, e) => s + e.duration);
-    final streak = _calculateStreak(sessions);
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -482,35 +478,12 @@ class _SummaryCard extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: [
-          _MiniStat(icon: Icons.loop, value: '$totalRounds', label: 'รอบทั้งหมด'),
-          _MiniStat(icon: Icons.timer, value: _formatDuration(totalDuration), label: 'เวลารวม'),
-          _MiniStat(icon: Icons.local_fire_department, value: '$streak', label: 'วันติดต่อกัน'),
+          _MiniStat(icon: Icons.loop, value: '${storageService.totalRounds}', label: 'รอบทั้งหมด'),
+          _MiniStat(icon: Icons.timer, value: storageService.totalPrayerTimeFormatted, label: 'เวลารวม'),
+          _MiniStat(icon: Icons.local_fire_department, value: '${storageService.streak}', label: 'วันติดต่อกัน'),
         ],
       ),
     );
-  }
-
-  static int _calculateStreak(List<PrayerSession> sessions) {
-    if (sessions.isEmpty) return 0;
-    final dates = sessions
-        .map((s) => DateTime(s.startTime.year, s.startTime.month, s.startTime.day))
-        .toSet().toList()..sort((a, b) => b.compareTo(a));
-    int streak = 1;
-    for (int i = 1; i < dates.length; i++) {
-      if (dates[i - 1].difference(dates[i]).inDays == 1) {
-        streak++;
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
-
-  static String _formatDuration(Duration d) {
-    final h = d.inHours;
-    final m = d.inMinutes.remainder(60);
-    if (h > 0) return '${h}h ${m}m';
-    return '${m}m';
   }
 }
 
@@ -527,7 +500,7 @@ class _MiniStat extends StatelessWidget {
         Icon(icon, color: AiprayTheme.gold, size: 20),
         const SizedBox(height: 6),
         Text(value, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-        Text(label, style: const TextStyle(color: Color(0xFFA09880), fontSize: 11)),
+        Text(label, style: const TextStyle(color: AiprayTheme.textSecondary, fontSize: 11)),
       ],
     );
   }

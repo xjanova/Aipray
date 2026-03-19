@@ -188,7 +188,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           return const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFD4A647)),
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AiprayTheme.gold),
                           );
                         }
                         if (state == UpdateState.updateAvailable) {
@@ -230,7 +230,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: AiprayTheme.gold.withValues(alpha: 0.3)),
                             ),
-                            child: const Text('ตรวจสอบ', style: TextStyle(color: Color(0xFFD4A647), fontSize: 12, fontWeight: FontWeight.w600)),
+                            child: const Text('ตรวจสอบ', style: TextStyle(color: AiprayTheme.gold, fontSize: 12, fontWeight: FontWeight.w600)),
                           ),
                         );
                       },
