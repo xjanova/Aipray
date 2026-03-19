@@ -4,36 +4,38 @@ namespace App\Http\Controllers;
 
 use App\Models\AiModel;
 use App\Models\Evaluation;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\View\View;
 
 class EvaluationController extends Controller
 {
-    public function index()
+    public function index(): View
     {
         $models = AiModel::where('status', '!=', 'archived')->latest()->get();
         $recentEvals = Evaluation::with('aiModel')->latest()->take(20)->get();
         return view('evaluate.index', compact('models', 'recentEvals'));
     }
 
-    public function evaluate(Request $request)
+    public function evaluate(Request $request): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'model_id' => 'required|exists:ai_models,id',
             'eval_type' => 'required|in:live,file,batch',
-            'recognized_text' => 'nullable|string',
-            'reference_text' => 'nullable|string',
+            'recognized_text' => 'nullable|string|max:10000',
+            'reference_text' => 'nullable|string|max:10000',
         ]);
 
-        $recognized = $request->input('recognized_text', '');
-        $reference = $request->input('reference_text', '');
+        $recognized = $validated['recognized_text'] ?? '';
+        $reference = $validated['reference_text'] ?? '';
 
         $wer = $this->calculateWER($reference, $recognized);
         $cer = $this->calculateCER($reference, $recognized);
         $accuracy = max(0, 100 - $wer);
 
         $eval = Evaluation::create([
-            'ai_model_id' => $request->model_id,
-            'eval_type' => $request->eval_type,
+            'ai_model_id' => $validated['model_id'],
+            'eval_type' => $validated['eval_type'],
             'recognized_text' => $recognized,
             'reference_text' => $reference,
             'accuracy' => round($accuracy, 2),
@@ -45,9 +47,9 @@ class EvaluationController extends Controller
         return response()->json($eval);
     }
 
-    public function batchEvaluate(Request $request)
+    public function batchEvaluate(Request $request): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'model_id' => 'required|exists:ai_models,id',
         ]);
 
@@ -75,7 +77,7 @@ class EvaluationController extends Controller
         $avgCer = $totalCer / count($categories);
 
         Evaluation::create([
-            'ai_model_id' => $request->model_id,
+            'ai_model_id' => $validated['model_id'],
             'eval_type' => 'batch',
             'accuracy' => round(max(0, 100 - $avgWer), 2),
             'wer' => round($avgWer, 2),
@@ -99,7 +101,7 @@ class EvaluationController extends Controller
         $recWords = preg_split('/\s+/u', trim($recognized));
         if (empty($refWords)) return 100;
 
-        $distance = $this->levenshteinWords($refWords, $recWords);
+        $distance = $this->levenshteinArray($refWords, $recWords);
         return min(100, ($distance / count($refWords)) * 100);
     }
 
@@ -112,11 +114,6 @@ class EvaluationController extends Controller
 
         $distance = $this->levenshteinArray($ref, $rec);
         return min(100, ($distance / count($ref)) * 100);
-    }
-
-    private function levenshteinWords(array $s, array $t): int
-    {
-        return $this->levenshteinArray($s, $t);
     }
 
     private function levenshteinArray(array $s, array $t): int

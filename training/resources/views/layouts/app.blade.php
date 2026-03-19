@@ -173,7 +173,12 @@
 
             const toast = document.createElement('div');
             toast.className = `p-4 rounded-lg border ${colors[type]} flex items-center gap-2 fade-in backdrop-blur-lg min-w-[300px]`;
-            toast.innerHTML = `<i class="fas fa-${icons[type]}"></i><span>${message}</span>`;
+            const icon = document.createElement('i');
+            icon.className = `fas fa-${icons[type]}`;
+            const span = document.createElement('span');
+            span.textContent = message;
+            toast.appendChild(icon);
+            toast.appendChild(span);
             container.appendChild(toast);
 
             setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.5s'; setTimeout(() => toast.remove(), 500); }, 4000);

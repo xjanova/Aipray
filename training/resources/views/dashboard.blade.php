@@ -9,7 +9,7 @@
         <div class="flex items-center justify-between">
             <div>
                 <p class="text-gray-500 text-xs uppercase tracking-wide">ตัวอย่างเสียง</p>
-                <h3 class="text-2xl font-bold text-gray-100 mt-1">{{ formatNumber($totalSamples) }}</h3>
+                <h3 class="text-2xl font-bold text-gray-100 mt-1">{{ number_format($totalSamples) }}</h3>
             </div>
             <div class="w-12 h-12 rounded-xl bg-blue-500/20 flex items-center justify-center">
                 <i class="fas fa-microphone text-blue-400 text-lg"></i>
@@ -154,7 +154,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Accuracy Chart
     const accCtx = document.getElementById('accuracyChart');
     if (accCtx) {
-        const accData = @json($accuracyHistory);
+        const accData = @json($accuracyHistory, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
         new Chart(accCtx, {
             type: 'line',
             data: {
@@ -185,7 +185,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Category Chart
     const catCtx = document.getElementById('categoryChart');
     if (catCtx) {
-        const catData = @json($categories);
+        const catData = @json($categories, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT);
         const catLabels = { daily: 'ประจำวัน', protection: 'ป้องกัน', meditation: 'สมาธิ', merit: 'แผ่เมตตา', sutra: 'พระสูตร', general: 'ทั่วไป' };
         const catColors = ['#D4A647', '#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444'];
         new Chart(catCtx, {
@@ -212,6 +212,3 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 @endpush
 
-@php
-function formatNumber($n) { return number_format($n); }
-@endphp

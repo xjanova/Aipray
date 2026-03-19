@@ -5,11 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\TrainingJob;
 use App\Models\AudioSample;
 use App\Models\AiModel;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\View\View;
 
 class TrainingController extends Controller
 {
-    public function index()
+    public function index(): View
     {
         $jobs = TrainingJob::latest()->paginate(10);
         $sampleCount = AudioSample::count();
@@ -17,11 +20,11 @@ class TrainingController extends Controller
         return view('training.index', compact('jobs', 'sampleCount', 'labeledCount'));
     }
 
-    public function start(Request $request)
+    public function start(Request $request): JsonResponse
     {
-        $request->validate([
-            'base_model' => 'required|string',
-            'dataset_filter' => 'required|string',
+        $validated = $request->validate([
+            'base_model' => 'required|in:whisper-tiny,whisper-base,whisper-small,whisper-medium,sherpa-onnx',
+            'dataset_filter' => 'required|in:all,labeled,verified',
             'learning_rate' => 'required|numeric|min:0.000001|max:0.1',
             'batch_size' => 'required|integer|in:4,8,16,32',
             'epochs' => 'required|integer|min:1|max:100',
@@ -37,25 +40,30 @@ class TrainingController extends Controller
 
         $job = TrainingJob::create([
             'name' => 'Training ' . now()->format('Y-m-d H:i'),
-            'base_model' => $request->base_model,
-            'dataset_filter' => $request->dataset_filter,
-            'learning_rate' => $request->learning_rate,
-            'batch_size' => $request->batch_size,
-            'epochs' => $request->epochs,
-            'train_split' => $request->train_split,
-            'optimizer' => $request->optimizer,
+            'base_model' => $validated['base_model'],
+            'dataset_filter' => $validated['dataset_filter'],
+            'learning_rate' => $validated['learning_rate'],
+            'batch_size' => $validated['batch_size'],
+            'epochs' => $validated['epochs'],
+            'train_split' => $validated['train_split'],
+            'optimizer' => $validated['optimizer'],
             'augmentation' => $augmentation,
             'status' => 'running',
             'started_at' => now(),
             'loss_history' => [],
             'metrics_history' => [],
-            'log' => "=== Training Started ===\nModel: {$request->base_model}\nDataset: {$request->dataset_filter}\nEpochs: {$request->epochs}\n",
+            'log' => sprintf(
+                "=== Training Started ===\nModel: %s\nDataset: %s\nEpochs: %d\n",
+                $validated['base_model'],
+                $validated['dataset_filter'],
+                $validated['epochs']
+            ),
         ]);
 
         return response()->json($job, 201);
     }
 
-    public function progress(TrainingJob $trainingJob)
+    public function progress(TrainingJob $trainingJob): JsonResponse
     {
         return response()->json([
             'id' => $trainingJob->id,
@@ -75,7 +83,7 @@ class TrainingController extends Controller
         ]);
     }
 
-    public function simulateEpoch(TrainingJob $trainingJob)
+    public function simulateEpoch(TrainingJob $trainingJob): JsonResponse
     {
         if ($trainingJob->status !== 'running') {
             return response()->json(['error' => 'Job is not running'], 400);
@@ -105,40 +113,43 @@ class TrainingController extends Controller
 
         $isComplete = $epoch >= $totalEpochs;
 
-        $trainingJob->update([
-            'current_epoch' => $epoch,
-            'training_loss' => round($baseLoss, 4),
-            'validation_loss' => round($valLoss, 4),
-            'wer' => round($wer, 2),
-            'cer' => round($cer, 2),
-            'accuracy' => round($accuracy, 2),
-            'loss_history' => $lossHistory,
-            'metrics_history' => $metricsHistory,
-            'log' => $log,
-            'status' => $isComplete ? 'completed' : 'running',
-            'completed_at' => $isComplete ? now() : null,
-        ]);
-
-        if ($isComplete) {
-            AiModel::create([
-                'name' => "Aipray-{$trainingJob->base_model}-v" . AiModel::count() + 1,
-                'version' => '1.' . AiModel::count(),
-                'base_model' => $trainingJob->base_model,
-                'training_job_id' => $trainingJob->id,
-                'accuracy' => $trainingJob->accuracy,
-                'wer' => $trainingJob->wer,
-                'cer' => $trainingJob->cer,
-                'total_samples_trained' => AudioSample::count(),
-                'total_hours_trained' => round(AudioSample::sum('duration') / 3600, 1),
-                'status' => 'active',
-                'file_size' => mt_rand(50, 500) * 1048576,
+        DB::transaction(function () use ($trainingJob, $epoch, $baseLoss, $valLoss, $wer, $cer, $accuracy, $lossHistory, $metricsHistory, $log, $isComplete) {
+            $trainingJob->update([
+                'current_epoch' => $epoch,
+                'training_loss' => round($baseLoss, 4),
+                'validation_loss' => round($valLoss, 4),
+                'wer' => round($wer, 2),
+                'cer' => round($cer, 2),
+                'accuracy' => round($accuracy, 2),
+                'loss_history' => $lossHistory,
+                'metrics_history' => $metricsHistory,
+                'log' => $log,
+                'status' => $isComplete ? 'completed' : 'running',
+                'completed_at' => $isComplete ? now() : null,
             ]);
-        }
+
+            if ($isComplete) {
+                $modelCount = AiModel::count() + 1;
+                AiModel::create([
+                    'name' => "Aipray-{$trainingJob->base_model}-v{$modelCount}",
+                    'version' => '1.' . $modelCount,
+                    'base_model' => $trainingJob->base_model,
+                    'training_job_id' => $trainingJob->id,
+                    'accuracy' => $trainingJob->accuracy,
+                    'wer' => $trainingJob->wer,
+                    'cer' => $trainingJob->cer,
+                    'total_samples_trained' => AudioSample::count(),
+                    'total_hours_trained' => round(AudioSample::sum('duration') / 3600, 1),
+                    'status' => 'active',
+                    'file_size' => mt_rand(50, 500) * 1048576,
+                ]);
+            }
+        });
 
         return response()->json($trainingJob->fresh());
     }
 
-    public function stop(TrainingJob $trainingJob)
+    public function stop(TrainingJob $trainingJob): JsonResponse
     {
         $trainingJob->update([
             'status' => 'paused',
@@ -148,7 +159,7 @@ class TrainingController extends Controller
         return response()->json($trainingJob);
     }
 
-    public function cancel(TrainingJob $trainingJob)
+    public function cancel(TrainingJob $trainingJob): JsonResponse
     {
         $trainingJob->update([
             'status' => 'cancelled',

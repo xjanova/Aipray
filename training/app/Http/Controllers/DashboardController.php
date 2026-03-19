@@ -5,17 +5,20 @@ namespace App\Http\Controllers;
 use App\Models\AudioSample;
 use App\Models\TrainingJob;
 use App\Models\AiModel;
-use App\Models\Evaluation;
+use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
-    public function index()
+    public function index(): View
     {
-        $totalSamples = AudioSample::count();
-        $totalDuration = AudioSample::sum('duration');
-        $totalHours = round($totalDuration / 3600, 1);
-        $modelsCount = AiModel::count();
-        $bestAccuracy = AiModel::max('accuracy') ?? 0;
+        // Single aggregate query instead of 4 separate ones
+        $sampleStats = AudioSample::selectRaw('count(*) as total, coalesce(sum(duration), 0) as total_duration')->first();
+        $totalSamples = $sampleStats->total;
+        $totalHours = round($sampleStats->total_duration / 3600, 1);
+
+        $modelStats = AiModel::selectRaw('count(*) as total, max(accuracy) as best_accuracy')->first();
+        $modelsCount = $modelStats->total;
+        $bestAccuracy = $modelStats->best_accuracy ?? 0;
 
         $recentJobs = TrainingJob::latest()->take(5)->get();
         $recentSamples = AudioSample::latest()->take(10)->get();

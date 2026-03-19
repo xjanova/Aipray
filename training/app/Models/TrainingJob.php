@@ -23,7 +23,7 @@ class TrainingJob extends Model
         'learning_rate' => 'float',
     ];
 
-    public function model(): HasOne
+    public function aiModel(): HasOne
     {
         return $this->hasOne(AiModel::class);
     }
