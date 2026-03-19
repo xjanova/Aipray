@@ -3,11 +3,13 @@ import 'package:flutter/services.dart';
 import 'config/theme.dart';
 import 'services/storage_service.dart';
 import 'services/sync_service.dart';
+import 'services/update_service.dart';
 import 'screens/main_shell.dart';
 import 'screens/onboarding_screen.dart';
 
 final storageService = StorageService();
 final syncService = SyncService();
+final updateService = UpdateService();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();

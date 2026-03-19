@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import '../config/theme.dart';
 import '../main.dart';
+import '../services/update_service.dart';
 import 'contribute_screen.dart';
+import 'update_dialog.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -153,6 +155,93 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 24),
 
+          // Update section
+          _SectionHeader(title: 'อัปเดต'),
+          const SizedBox(height: 8),
+          _SettingsCard(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  children: [
+                    Icon(Icons.system_update, color: AiprayTheme.gold, size: 22),
+                    const SizedBox(width: 14),
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'ตรวจสอบอัปเดต',
+                            style: TextStyle(color: Colors.white, fontSize: 15),
+                          ),
+                          Text(
+                            'ดาวน์โหลดเวอร์ชันใหม่จาก GitHub',
+                            style: TextStyle(color: Color(0xFF888888), fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    ValueListenableBuilder<UpdateState>(
+                      valueListenable: updateService.state,
+                      builder: (context, state, _) {
+                        if (state == UpdateState.checking) {
+                          return const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: AiprayTheme.gold),
+                          );
+                        }
+                        if (state == UpdateState.updateAvailable) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Text('มีอัปเดต!', style: TextStyle(color: Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.bold)),
+                          );
+                        }
+                        return GestureDetector(
+                          onTap: () async {
+                            final result = await updateService.checkForUpdate(force: true);
+                            if (!context.mounted) return;
+                            if (result == UpdateCheckResult.updateAvailable) {
+                              UpdateDialog.show(context, updateService);
+                            } else if (result == UpdateCheckResult.noUpdate) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('คุณใช้เวอร์ชันล่าสุดแล้ว ✓'),
+                                  backgroundColor: Color(0xFF10B981),
+                                ),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('ไม่สามารถตรวจสอบอัปเดตได้'),
+                                  backgroundColor: Color(0xFFEF4444),
+                                ),
+                              );
+                            }
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: AiprayTheme.gold.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AiprayTheme.gold.withValues(alpha: 0.3)),
+                            ),
+                            child: const Text('ตรวจสอบ', style: TextStyle(color: AiprayTheme.gold, fontSize: 12, fontWeight: FontWeight.w600)),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
           // About section
           _SectionHeader(title: 'เกี่ยวกับ'),
           const SizedBox(height: 8),
@@ -161,7 +250,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _InfoTile(
                 icon: Icons.info_outline,
                 title: 'เวอร์ชัน',
-                value: '1.0.0',
+                value: UpdateService.currentVersion,
               ),
               const Divider(height: 1),
               _InfoTile(

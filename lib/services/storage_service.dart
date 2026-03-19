@@ -9,23 +9,35 @@ class StorageService {
 
   late final SharedPreferences _prefs;
 
+  // Cached sessions to avoid repeated JSON parsing
+  List<PrayerSession>? _cachedSessions;
+
   Future<void> init() async {
     _prefs = await SharedPreferences.getInstance();
   }
 
   // === Prayer Sessions ===
   List<PrayerSession> getSessions() {
+    if (_cachedSessions != null) return _cachedSessions!;
     final raw = _prefs.getString(_sessionsKey);
-    if (raw == null) return [];
+    if (raw == null) {
+      _cachedSessions = [];
+      return _cachedSessions!;
+    }
     final list = jsonDecode(raw) as List;
-    return list
+    _cachedSessions = list
         .map((e) => PrayerSession.fromJson(e as Map<String, dynamic>))
         .toList()
       ..sort((a, b) => b.startTime.compareTo(a.startTime));
+    return _cachedSessions!;
+  }
+
+  void _invalidateCache() {
+    _cachedSessions = null;
   }
 
   Future<void> saveSession(PrayerSession session) async {
-    final sessions = getSessions();
+    final sessions = getSessions().toList(); // copy before mutating
     final idx = sessions.indexWhere((s) => s.id == session.id);
     if (idx >= 0) {
       sessions[idx] = session;
@@ -36,6 +48,7 @@ class StorageService {
       _sessionsKey,
       jsonEncode(sessions.map((s) => s.toJson()).toList()),
     );
+    _invalidateCache();
   }
 
   Future<void> deleteSession(String id) async {
@@ -44,6 +57,7 @@ class StorageService {
       _sessionsKey,
       jsonEncode(sessions.map((s) => s.toJson()).toList()),
     );
+    _invalidateCache();
   }
 
   // === Favorites ===
@@ -99,11 +113,43 @@ class StorageService {
     return getSessions().fold(0, (sum, s) => sum + s.roundsCompleted);
   }
 
-  String get totalPrayerTimeFormatted {
-    final d = totalPrayerTime;
+  String get totalPrayerTimeFormatted => formatDuration(totalPrayerTime);
+
+  /// Shared duration formatter: "Xh Ym" or "Xm"
+  static String formatDuration(Duration d) {
     final h = d.inHours;
     final m = d.inMinutes.remainder(60);
     if (h > 0) return '${h}h ${m}m';
     return '${m}m';
+  }
+
+  /// Calculate consecutive-day prayer streak.
+  /// Tolerates "today not yet done" by starting from yesterday if needed.
+  int get streak {
+    final sessions = getSessions();
+    if (sessions.isEmpty) return 0;
+
+    // Build a set of unique prayer dates for O(1) lookup
+    final prayerDates = <DateTime>{};
+    for (final s in sessions) {
+      prayerDates.add(DateTime(s.startTime.year, s.startTime.month, s.startTime.day));
+    }
+
+    int count = 0;
+    var checkDate = DateTime.now();
+
+    for (int i = 0; i < 365; i++) {
+      final day = DateTime(checkDate.year, checkDate.month, checkDate.day);
+      if (prayerDates.contains(day)) {
+        count++;
+        checkDate = checkDate.subtract(const Duration(days: 1));
+      } else if (i == 0) {
+        // Today hasn't been done yet, check from yesterday
+        checkDate = checkDate.subtract(const Duration(days: 1));
+      } else {
+        break;
+      }
+    }
+    return count;
   }
 }
