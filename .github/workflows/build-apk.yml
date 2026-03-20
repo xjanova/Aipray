@@ -2,8 +2,13 @@ name: Build & Release APK
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
+  pull_request:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       release_name:
@@ -50,8 +55,14 @@ jobs:
 
       - name: Rename APKs
         run: |
-          VERSION="${GITHUB_REF_NAME:-${{ github.event.inputs.release_name }}}"
-          VERSION="${VERSION#v}"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          elif [[ -n "${{ github.event.inputs.release_name }}" ]]; then
+            VERSION="${{ github.event.inputs.release_name }}"
+            VERSION="${VERSION#v}"
+          else
+            VERSION="${GITHUB_SHA::7}"
+          fi
 
           cp build/app/outputs/flutter-apk/app-release.apk \
              build/app/outputs/flutter-apk/aipray-${VERSION}-universal.apk
