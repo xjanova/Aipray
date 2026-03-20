@@ -53,16 +53,16 @@ jobs:
       - name: Build APK (split per ABI - smaller size)
         run: flutter build apk --release --split-per-abi
 
+      - name: Extract version from pubspec.yaml
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //;s/+.*//')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Detected version: $VERSION"
+
       - name: Rename APKs
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          elif [[ -n "${{ github.event.inputs.release_name }}" ]]; then
-            VERSION="${{ github.event.inputs.release_name }}"
-            VERSION="${VERSION#v}"
-          else
-            VERSION="${GITHUB_SHA::7}"
-          fi
+          VERSION="${{ steps.version.outputs.version }}"
 
           cp build/app/outputs/flutter-apk/app-release.apk \
              build/app/outputs/flutter-apk/aipray-${VERSION}-universal.apk
@@ -84,11 +84,11 @@ jobs:
             build/app/outputs/flutter-apk/aipray-*.apk
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name || github.event.inputs.release_name }}
-          name: "Aipray ${{ github.ref_name || github.event.inputs.release_name }}"
+          tag_name: v${{ steps.version.outputs.version }}
+          name: "Aipray v${{ steps.version.outputs.version }}"
           body: |
             ## Aipray - สวดมนต์อัจฉริยะ
 
