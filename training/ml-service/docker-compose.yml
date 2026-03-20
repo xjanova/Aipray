@@ -1,0 +1,36 @@
+services:
+  ml-service:
+    build: .
+    ports:
+      - "8100:8100"
+    volumes:
+      - ./models:/app/models
+      - ./data:/app/data
+      - ../storage/app/public/audio_samples:/app/laravel-audio
+    environment:
+      - ML_API_HOST=0.0.0.0
+      - ML_API_PORT=8100
+      - ML_DEVICE=auto
+      - LARAVEL_BASE_URL=http://host.docker.internal:8000
+      - LARAVEL_API_SECRET=ml-service-secret-key
+      - LARAVEL_STORAGE_PATH=/app/laravel-audio
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+volumes:
+  redis-data:
