@@ -115,6 +115,8 @@ class _HistoryScreenState extends State<HistoryScreen> {
 }
 
 class _EmptyState extends StatelessWidget {
+  const _EmptyState();
+
   @override
   Widget build(BuildContext context) {
     return Center(
