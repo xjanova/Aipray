@@ -26,15 +26,18 @@ Route::post('/record/store', [RecordController::class, 'storeRecording'])->name(
 // Training
 Route::get('/training', [TrainingController::class, 'index'])->name('training.index');
 Route::post('/training/start', [TrainingController::class, 'start'])->name('training.start');
-Route::post('/training/{trainingJob}/simulate', [TrainingController::class, 'simulateEpoch'])->name('training.simulate');
 Route::get('/training/{trainingJob}/progress', [TrainingController::class, 'progress'])->name('training.progress');
 Route::post('/training/{trainingJob}/stop', [TrainingController::class, 'stop'])->name('training.stop');
 Route::post('/training/{trainingJob}/cancel', [TrainingController::class, 'cancel'])->name('training.cancel');
+
+// ML Service Callback (internal API)
+Route::post('/api/ml/training-callback', [TrainingController::class, 'mlCallback'])->name('ml.callback');
 
 // Evaluation
 Route::get('/evaluate', [EvaluationController::class, 'index'])->name('evaluate.index');
 Route::post('/evaluate', [EvaluationController::class, 'evaluate'])->name('evaluate.run');
 Route::post('/evaluate/batch', [EvaluationController::class, 'batchEvaluate'])->name('evaluate.batch');
+Route::post('/evaluate/live-transcribe', [EvaluationController::class, 'liveTranscribe'])->name('evaluate.live');
 
 // Model Management
 Route::get('/models', [AiModelController::class, 'index'])->name('models.index');

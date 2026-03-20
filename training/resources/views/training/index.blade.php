@@ -3,6 +3,27 @@
 @section('page-title', 'เทรนโมเดล')
 
 @section('content')
+<!-- ML Service Status Banner -->
+<div class="mb-6 glass rounded-xl p-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+        <div class="w-3 h-3 rounded-full {{ $mlHealthy ? 'bg-green-400 animate-pulse' : 'bg-red-400' }}"></div>
+        <span class="text-sm text-gray-300">
+            ML Service:
+            @if($mlHealthy)
+                <span class="text-green-400">Online</span>
+                @if($mlHealth)
+                    - Device: <span class="text-gold-400">{{ $mlHealth['device'] ?? 'unknown' }}</span>
+                    | Models: {{ $mlHealth['models_loaded'] ?? 0 }}
+                    | Active Jobs: {{ $mlHealth['active_training_jobs'] ?? 0 }}
+                @endif
+            @else
+                <span class="text-red-400">Offline</span>
+                <span class="text-gray-500 ml-2">- กรุณาเปิด ML Service (cd ml-service && docker compose up)</span>
+            @endif
+        </span>
+    </div>
+</div>
+
 <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
     <!-- Training Config -->
     <div class="xl:col-span-2">
@@ -12,11 +33,10 @@
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">โมเดลพื้นฐาน</label>
                     <select id="base-model" class="w-full bg-temple-50/50 border border-gold-500/10 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-gold-500/30">
-                        <option value="whisper-tiny">Whisper Tiny (39M)</option>
-                        <option value="whisper-base" selected>Whisper Base (74M)</option>
-                        <option value="whisper-small">Whisper Small (244M)</option>
-                        <option value="whisper-medium">Whisper Medium (769M)</option>
-                        <option value="sherpa-onnx">Sherpa-ONNX Thai</option>
+                        <option value="whisper-tiny">Whisper Tiny (39M) - เร็ว, ใช้ RAM น้อย</option>
+                        <option value="whisper-base" selected>Whisper Base (74M) - สมดุล</option>
+                        <option value="whisper-small">Whisper Small (244M) - แม่นยำ</option>
+                        <option value="whisper-medium">Whisper Medium (769M) - แม่นยำมาก (ต้องใช้ GPU)</option>
                     </select>
                 </div>
                 <div>
@@ -29,15 +49,15 @@
                 </div>
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">Learning Rate</label>
-                    <input type="number" id="learning-rate" value="0.0001" step="0.00001" min="0.000001" max="0.1" class="w-full bg-temple-50/50 border border-gold-500/10 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-gold-500/30">
+                    <input type="number" id="learning-rate" value="0.00001" step="0.000001" min="0.000001" max="0.1" class="w-full bg-temple-50/50 border border-gold-500/10 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-gold-500/30">
                 </div>
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">Batch Size</label>
                     <select id="batch-size" class="w-full bg-temple-50/50 border border-gold-500/10 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-gold-500/30">
-                        <option value="4">4</option>
+                        <option value="4">4 (ใช้ RAM น้อย)</option>
                         <option value="8" selected>8</option>
-                        <option value="16">16</option>
-                        <option value="32">32</option>
+                        <option value="16">16 (ต้องใช้ GPU)</option>
+                        <option value="32">32 (ต้องใช้ GPU ใหญ่)</option>
                     </select>
                 </div>
                 <div>
@@ -47,7 +67,7 @@
                 <div>
                     <label class="block text-sm text-gray-400 mb-1">Optimizer</label>
                     <select id="optimizer" class="w-full bg-temple-50/50 border border-gold-500/10 rounded-lg px-3 py-2 text-sm text-gray-300 focus:outline-none focus:border-gold-500/30">
-                        <option value="adamw" selected>AdamW</option>
+                        <option value="adamw" selected>AdamW (แนะนำ)</option>
                         <option value="adam">Adam</option>
                         <option value="sgd">SGD</option>
                     </select>
@@ -79,19 +99,30 @@
             </div>
 
             <div class="flex gap-3">
-                <button id="start-train-btn" class="px-6 py-3 gradient-gold rounded-lg text-sm font-semibold text-white hover:opacity-90 transition shadow-lg">
-                    <i class="fas fa-play mr-2"></i>เริ่มเทรน
+                <button id="start-train-btn" class="px-6 py-3 gradient-gold rounded-lg text-sm font-semibold text-white hover:opacity-90 transition shadow-lg {{ !$mlHealthy ? 'opacity-50' : '' }}" {{ !$mlHealthy ? 'disabled' : '' }}>
+                    <i class="fas fa-play mr-2"></i>เริ่มเทรน (Real ML)
                 </button>
                 <button id="stop-train-btn" disabled class="px-6 py-3 bg-red-500/20 rounded-lg text-sm font-medium text-red-400 hover:bg-red-500/30 transition disabled:opacity-30">
                     <i class="fas fa-stop mr-2"></i>หยุดเทรน
                 </button>
+                <button id="cancel-train-btn" disabled class="px-6 py-3 bg-gray-500/20 rounded-lg text-sm font-medium text-gray-400 hover:bg-gray-500/30 transition disabled:opacity-30">
+                    <i class="fas fa-times mr-2"></i>ยกเลิก
+                </button>
             </div>
+
+            @if(!$mlHealthy)
+            <div class="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+                <p class="text-sm text-yellow-400"><i class="fas fa-exclamation-triangle mr-2"></i>ML Service ไม่ทำงาน</p>
+                <p class="text-xs text-gray-500 mt-1">เริ่ม ML Service:</p>
+                <code class="text-xs text-green-400 block mt-1 bg-black/30 p-2 rounded">cd training/ml-service && docker compose up -d</code>
+            </div>
+            @endif
         </div>
 
         <!-- Training Progress -->
         <div id="progress-section" class="glass rounded-xl p-6 hidden">
             <div class="flex items-center justify-between mb-4">
-                <h3 class="text-lg font-semibold text-gray-200"><i class="fas fa-spinner fa-pulse text-gold-500 mr-2" id="progress-spinner"></i>ความคืบหน้า</h3>
+                <h3 class="text-lg font-semibold text-gray-200"><i class="fas fa-spinner fa-pulse text-gold-500 mr-2" id="progress-spinner"></i>ความคืบหน้า (Real Training)</h3>
                 <span class="text-sm text-gray-500" id="elapsed-time">00:00:00</span>
             </div>
 
@@ -162,7 +193,7 @@
             <h3 class="text-sm font-semibold text-gray-300 mb-4"><i class="fas fa-history text-gold-500 mr-2"></i>ประวัติการเทรน</h3>
             <div class="space-y-3">
                 @forelse($jobs as $job)
-                <div class="p-3 rounded-lg bg-temple-50/30 hover:bg-temple-50/50 transition cursor-pointer">
+                <div class="p-3 rounded-lg bg-temple-50/30 hover:bg-temple-50/50 transition cursor-pointer" onclick="loadJobProgress({{ $job->id }})">
                     <div class="flex items-center justify-between mb-1">
                         <span class="text-sm text-gray-300 font-medium truncate">{{ $job->name }}</span>
                         <span class="px-2 py-0.5 rounded-full text-[10px]
@@ -197,7 +228,7 @@
 @push('scripts')
 <script>
 let currentJobId = null;
-let trainingInterval = null;
+let pollInterval = null;
 let lossChart = null;
 let errorChart = null;
 let elapsedInterval = null;
@@ -209,11 +240,12 @@ document.getElementById('train-split').addEventListener('input', function() {
 
 document.getElementById('start-train-btn').addEventListener('click', startTraining);
 document.getElementById('stop-train-btn').addEventListener('click', stopTraining);
+document.getElementById('cancel-train-btn').addEventListener('click', cancelTraining);
 
 async function startTraining() {
     const btn = document.getElementById('start-train-btn');
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>กำลังเริ่ม...';
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>กำลังเชื่อมต่อ ML Service...';
 
     try {
         const job = await apiCall('{{ route("training.start") }}', 'POST', {
@@ -230,10 +262,11 @@ async function startTraining() {
         });
 
         currentJobId = job.id;
-        showToast('เริ่มเทรนโมเดลแล้ว!', 'success');
+        showToast('เริ่มเทรนโมเดลจริงแล้ว! (Whisper Fine-tuning)', 'success');
 
         document.getElementById('progress-section').classList.remove('hidden');
         document.getElementById('stop-train-btn').disabled = false;
+        document.getElementById('cancel-train-btn').disabled = false;
         document.getElementById('training-log').textContent = job.log || '';
 
         initCharts();
@@ -245,39 +278,69 @@ async function startTraining() {
                 `${String(Math.floor(s/3600)).padStart(2,'0')}:${String(Math.floor(s%3600/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
         }, 1000);
 
-        // Simulate training epochs
-        trainingInterval = setInterval(simulateEpoch, 2000);
+        // Poll for real progress from ML service
+        pollInterval = setInterval(pollProgress, 3000);
 
     } catch (err) {
-        showToast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+        showToast('เกิดข้อผิดพลาด: ' + (err.message || 'ML Service อาจไม่ทำงาน'), 'error');
     }
 
     btn.disabled = false;
-    btn.innerHTML = '<i class="fas fa-play mr-2"></i>เริ่มเทรน';
+    btn.innerHTML = '<i class="fas fa-play mr-2"></i>เริ่มเทรน (Real ML)';
 }
 
-async function simulateEpoch() {
+async function pollProgress() {
     if (!currentJobId) return;
     try {
-        const job = await apiCall(`/training/${currentJobId}/simulate`, 'POST');
+        const job = await apiCall(`/training/${currentJobId}/progress`, 'GET');
         updateProgress(job);
 
-        if (job.status === 'completed') {
-            clearInterval(trainingInterval);
+        if (['completed', 'failed', 'cancelled'].includes(job.status)) {
+            clearInterval(pollInterval);
             clearInterval(elapsedInterval);
             document.getElementById('stop-train-btn').disabled = true;
-            document.getElementById('progress-spinner').className = 'fas fa-check-circle text-green-400 mr-2';
-            showToast('เทรนเสร็จสมบูรณ์! โมเดลถูกบันทึกแล้ว', 'success');
+            document.getElementById('cancel-train-btn').disabled = true;
+
+            if (job.status === 'completed') {
+                document.getElementById('progress-spinner').className = 'fas fa-check-circle text-green-400 mr-2';
+                showToast('เทรนเสร็จสมบูรณ์! โมเดลถูกบันทึกแล้ว', 'success');
+            } else if (job.status === 'failed') {
+                document.getElementById('progress-spinner').className = 'fas fa-times-circle text-red-400 mr-2';
+                showToast('การเทรนล้มเหลว ดู log สำหรับรายละเอียด', 'error');
+            } else {
+                document.getElementById('progress-spinner').className = 'fas fa-ban text-gray-400 mr-2';
+                showToast('ยกเลิกการเทรนแล้ว', 'warning');
+            }
         }
     } catch (err) {
-        clearInterval(trainingInterval);
-        showToast('เกิดข้อผิดพลาดระหว่างเทรน', 'error');
+        console.error('Poll error:', err);
+    }
+}
+
+async function loadJobProgress(jobId) {
+    try {
+        const job = await apiCall(`/training/${jobId}/progress`, 'GET');
+        currentJobId = jobId;
+        document.getElementById('progress-section').classList.remove('hidden');
+        initCharts();
+        updateProgress(job);
+
+        if (job.status === 'running') {
+            document.getElementById('stop-train-btn').disabled = false;
+            document.getElementById('cancel-train-btn').disabled = false;
+            if (!pollInterval) {
+                pollInterval = setInterval(pollProgress, 3000);
+            }
+        }
+    } catch (err) {
+        showToast('ไม่สามารถโหลดข้อมูลได้', 'error');
     }
 }
 
 async function stopTraining() {
     if (!currentJobId) return;
-    clearInterval(trainingInterval);
+    clearInterval(pollInterval);
+    pollInterval = null;
     clearInterval(elapsedInterval);
     await apiCall(`/training/${currentJobId}/stop`, 'POST');
     document.getElementById('stop-train-btn').disabled = true;
@@ -285,15 +348,28 @@ async function stopTraining() {
     showToast('หยุดเทรนแล้ว', 'warning');
 }
 
+async function cancelTraining() {
+    if (!currentJobId) return;
+    if (!confirm('ยืนยันยกเลิกการเทรน?')) return;
+    clearInterval(pollInterval);
+    pollInterval = null;
+    clearInterval(elapsedInterval);
+    await apiCall(`/training/${currentJobId}/cancel`, 'POST');
+    document.getElementById('stop-train-btn').disabled = true;
+    document.getElementById('cancel-train-btn').disabled = true;
+    document.getElementById('progress-spinner').className = 'fas fa-ban text-gray-400 mr-2';
+    showToast('ยกเลิกการเทรนแล้ว', 'warning');
+}
+
 function updateProgress(job) {
     const pct = job.epochs > 0 ? Math.round((job.current_epoch / job.epochs) * 100) : 0;
     document.getElementById('progress-pct').textContent = pct + '%';
-    document.getElementById('epoch-display').textContent = `${job.current_epoch}/${job.epochs}`;
-    document.getElementById('train-loss-display').textContent = job.training_loss?.toFixed(4) ?? '-';
-    document.getElementById('val-loss-display').textContent = job.validation_loss?.toFixed(4) ?? '-';
-    document.getElementById('wer-display').textContent = job.wer ? job.wer.toFixed(2) + '%' : '-';
-    document.getElementById('cer-display').textContent = job.cer ? job.cer.toFixed(2) + '%' : '-';
-    document.getElementById('accuracy-display').textContent = job.accuracy ? job.accuracy.toFixed(1) + '%' : '-';
+    document.getElementById('epoch-display').textContent = `${job.current_epoch || 0}/${job.epochs}`;
+    document.getElementById('train-loss-display').textContent = job.training_loss != null ? parseFloat(job.training_loss).toFixed(4) : '-';
+    document.getElementById('val-loss-display').textContent = job.validation_loss != null ? parseFloat(job.validation_loss).toFixed(4) : '-';
+    document.getElementById('wer-display').textContent = job.wer != null ? parseFloat(job.wer).toFixed(2) + '%' : '-';
+    document.getElementById('cer-display').textContent = job.cer != null ? parseFloat(job.cer).toFixed(2) + '%' : '-';
+    document.getElementById('accuracy-display').textContent = job.accuracy != null ? parseFloat(job.accuracy).toFixed(1) + '%' : '-';
     document.getElementById('training-log').textContent = job.log || '';
     document.getElementById('training-log').scrollTop = document.getElementById('training-log').scrollHeight;
 

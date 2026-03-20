@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.env
+models/
+data/
+.cache/
+*.onnx
+*.pt
+*.bin
+*.safetensors
