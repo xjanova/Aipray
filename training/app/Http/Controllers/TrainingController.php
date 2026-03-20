@@ -5,25 +5,33 @@ namespace App\Http\Controllers;
 use App\Models\TrainingJob;
 use App\Models\AudioSample;
 use App\Models\AiModel;
+use App\Services\MlServiceClient;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 class TrainingController extends Controller
 {
+    public function __construct(
+        private readonly MlServiceClient $mlService,
+    ) {}
+
     public function index(): View
     {
         $jobs = TrainingJob::latest()->paginate(10);
         $sampleCount = AudioSample::count();
         $labeledCount = AudioSample::where('status', '!=', 'unlabeled')->count();
-        return view('training.index', compact('jobs', 'sampleCount', 'labeledCount'));
+        $mlHealthy = $this->mlService->isHealthy();
+        $mlHealth = $this->mlService->health();
+        return view('training.index', compact('jobs', 'sampleCount', 'labeledCount', 'mlHealthy', 'mlHealth'));
     }
 
     public function start(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'base_model' => 'required|in:whisper-tiny,whisper-base,whisper-small,whisper-medium,sherpa-onnx',
+            'base_model' => 'required|in:whisper-tiny,whisper-base,whisper-small,whisper-medium',
             'dataset_filter' => 'required|in:all,labeled,verified',
             'learning_rate' => 'required|numeric|min:0.000001|max:0.1',
             'batch_size' => 'required|integer|in:4,8,16,32',
@@ -38,6 +46,29 @@ class TrainingController extends Controller
             'pitch' => $request->boolean('aug_pitch'),
         ];
 
+        // Get audio samples for training
+        $samplesQuery = AudioSample::query();
+        if ($validated['dataset_filter'] === 'labeled') {
+            $samplesQuery->whereIn('status', ['labeled', 'verified']);
+        } elseif ($validated['dataset_filter'] === 'verified') {
+            $samplesQuery->where('status', 'verified');
+        }
+
+        $samples = $samplesQuery->get()->map(fn ($s) => [
+            'id' => $s->id,
+            'filename' => $s->filename,
+            'file_path' => storage_path('app/public/' . $s->file_path),
+            'category' => $s->category,
+            'label' => $s->label,
+            'transcript' => $s->transcript,
+            'duration' => $s->duration,
+        ])->toArray();
+
+        if (empty($samples)) {
+            return response()->json(['error' => 'No audio samples available for training'], 422);
+        }
+
+        // Create training job record
         $job = TrainingJob::create([
             'name' => 'Training ' . now()->format('Y-m-d H:i'),
             'base_model' => $validated['base_model'],
@@ -48,19 +79,116 @@ class TrainingController extends Controller
             'train_split' => $validated['train_split'],
             'optimizer' => $validated['optimizer'],
             'augmentation' => $augmentation,
-            'status' => 'running',
+            'status' => 'starting',
             'started_at' => now(),
             'loss_history' => [],
             'metrics_history' => [],
-            'log' => sprintf(
-                "=== Training Started ===\nModel: %s\nDataset: %s\nEpochs: %d\n",
-                $validated['base_model'],
-                $validated['dataset_filter'],
-                $validated['epochs']
-            ),
+            'log' => "=== Connecting to ML Service ===\n",
         ]);
 
+        // Send training request to ML service
+        try {
+            $this->mlService->startTraining([
+                'job_id' => $job->id,
+                'base_model' => $validated['base_model'],
+                'learning_rate' => $validated['learning_rate'],
+                'batch_size' => $validated['batch_size'],
+                'epochs' => $validated['epochs'],
+                'optimizer' => $validated['optimizer'],
+                'train_split' => $validated['train_split'] / 100,
+                'augmentation' => $augmentation,
+                'samples' => $samples,
+            ]);
+
+            $job->update([
+                'status' => 'running',
+                'log' => $job->log . "ML Service connected. Training started.\n",
+            ]);
+        } catch (\Exception $e) {
+            Log::error("ML training start failed: " . $e->getMessage());
+            $job->update([
+                'status' => 'failed',
+                'log' => $job->log . "Failed to connect to ML Service: " . $e->getMessage() . "\n",
+                'completed_at' => now(),
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to start ML training. Is the ML service running?',
+                'details' => $e->getMessage(),
+                'job' => $job,
+            ], 503);
+        }
+
         return response()->json($job, 201);
+    }
+
+    /**
+     * Receive training progress callback from ML service.
+     */
+    public function mlCallback(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'job_id' => 'required|integer|exists:training_jobs,id',
+            'status' => 'nullable|string',
+            'current_epoch' => 'nullable|integer',
+            'training_loss' => 'nullable|numeric',
+            'validation_loss' => 'nullable|numeric',
+            'wer' => 'nullable|numeric',
+            'cer' => 'nullable|numeric',
+            'accuracy' => 'nullable|numeric',
+            'loss_history' => 'nullable|array',
+            'metrics_history' => 'nullable|array',
+            'log' => 'nullable|string',
+            'model_path' => 'nullable|string',
+            'elapsed' => 'nullable|integer',
+        ]);
+
+        $job = TrainingJob::findOrFail($validated['job_id']);
+
+        $updateData = array_filter([
+            'status' => $validated['status'] ?? null,
+            'current_epoch' => $validated['current_epoch'] ?? null,
+            'training_loss' => $validated['training_loss'] ?? null,
+            'validation_loss' => $validated['validation_loss'] ?? null,
+            'wer' => $validated['wer'] ?? null,
+            'cer' => $validated['cer'] ?? null,
+            'accuracy' => $validated['accuracy'] ?? null,
+            'loss_history' => $validated['loss_history'] ?? null,
+            'metrics_history' => $validated['metrics_history'] ?? null,
+            'log' => $validated['log'] ?? null,
+            'elapsed' => $validated['elapsed'] ?? null,
+        ], fn ($v) => $v !== null);
+
+        if (in_array($validated['status'] ?? '', ['completed', 'failed', 'cancelled'])) {
+            $updateData['completed_at'] = now();
+        }
+
+        DB::transaction(function () use ($job, $updateData, $validated) {
+            $job->update($updateData);
+
+            // Create AI Model record when training completes
+            if (($validated['status'] ?? '') === 'completed') {
+                // Use max(id) + 1 inside transaction to avoid race condition on version naming
+                $maxId = AiModel::lockForUpdate()->max('id') ?? 0;
+                $modelVersion = $maxId + 1;
+                AiModel::create([
+                    'name' => "Aipray-{$job->base_model}-v{$modelVersion}",
+                    'version' => '1.' . $modelVersion,
+                    'base_model' => $job->base_model,
+                    'training_job_id' => $job->id,
+                    'accuracy' => $job->accuracy,
+                    'wer' => $job->wer,
+                    'cer' => $job->cer,
+                    'total_samples_trained' => AudioSample::count(),
+                    'total_hours_trained' => round(AudioSample::sum('duration') / 3600, 1),
+                    'status' => 'active',
+                    'file_path' => $validated['model_path'] ?? null,
+                    'file_size' => 0,
+                ]);
+            }
+        });
+
+        return response()->json(['message' => 'Callback received']);
     }
 
     public function progress(TrainingJob $trainingJob): JsonResponse
@@ -83,78 +211,16 @@ class TrainingController extends Controller
         ]);
     }
 
-    public function simulateEpoch(TrainingJob $trainingJob): JsonResponse
+    public function stop(TrainingJob $trainingJob): JsonResponse
     {
         if ($trainingJob->status !== 'running') {
             return response()->json(['error' => 'Job is not running'], 400);
         }
 
-        $epoch = $trainingJob->current_epoch + 1;
-        $totalEpochs = $trainingJob->epochs;
-
-        // Simulate realistic training metrics
-        $baseLoss = 2.5 * exp(-0.3 * $epoch) + 0.1 + (mt_rand(-100, 100) / 5000);
-        $valLoss = $baseLoss * (1.05 + mt_rand(0, 200) / 5000);
-        $wer = max(5, 80 * exp(-0.25 * $epoch) + mt_rand(-200, 200) / 100);
-        $cer = max(2, 40 * exp(-0.25 * $epoch) + mt_rand(-100, 100) / 100);
-        $accuracy = min(99, 100 - $wer * 0.8);
-
-        $lossHistory = $trainingJob->loss_history ?? [];
-        $lossHistory[] = ['epoch' => $epoch, 'train' => round($baseLoss, 4), 'val' => round($valLoss, 4)];
-
-        $metricsHistory = $trainingJob->metrics_history ?? [];
-        $metricsHistory[] = ['epoch' => $epoch, 'wer' => round($wer, 2), 'cer' => round($cer, 2), 'accuracy' => round($accuracy, 2)];
-
-        $log = $trainingJob->log;
-        $log .= sprintf(
-            "\n[Epoch %d/%d] loss=%.4f val_loss=%.4f WER=%.2f%% CER=%.2f%% acc=%.2f%%",
-            $epoch, $totalEpochs, $baseLoss, $valLoss, $wer, $cer, $accuracy
-        );
-
-        $isComplete = $epoch >= $totalEpochs;
-
-        DB::transaction(function () use ($trainingJob, $epoch, $baseLoss, $valLoss, $wer, $cer, $accuracy, $lossHistory, $metricsHistory, $log, $isComplete) {
-            $trainingJob->update([
-                'current_epoch' => $epoch,
-                'training_loss' => round($baseLoss, 4),
-                'validation_loss' => round($valLoss, 4),
-                'wer' => round($wer, 2),
-                'cer' => round($cer, 2),
-                'accuracy' => round($accuracy, 2),
-                'loss_history' => $lossHistory,
-                'metrics_history' => $metricsHistory,
-                'log' => $log,
-                'status' => $isComplete ? 'completed' : 'running',
-                'completed_at' => $isComplete ? now() : null,
-            ]);
-
-            if ($isComplete) {
-                // Use max(id) + 1 inside transaction to avoid race condition on version naming
-                $maxId = AiModel::lockForUpdate()->max('id') ?? 0;
-                $modelVersion = $maxId + 1;
-                AiModel::create([
-                    'name' => "Aipray-{$trainingJob->base_model}-v{$modelVersion}",
-                    'version' => '1.' . $modelVersion,
-                    'base_model' => $trainingJob->base_model,
-                    'training_job_id' => $trainingJob->id,
-                    'accuracy' => $trainingJob->accuracy,
-                    'wer' => $trainingJob->wer,
-                    'cer' => $trainingJob->cer,
-                    'total_samples_trained' => AudioSample::count(),
-                    'total_hours_trained' => round(AudioSample::sum('duration') / 3600, 1),
-                    'status' => 'active',
-                    'file_size' => mt_rand(50, 500) * 1048576,
-                ]);
-            }
-        });
-
-        return response()->json($trainingJob->fresh());
-    }
-
-    public function stop(TrainingJob $trainingJob): JsonResponse
-    {
-        if ($trainingJob->status !== 'running') {
-            return response()->json(['error' => 'Job is not running'], 400);
+        try {
+            $this->mlService->pauseTraining($trainingJob->id);
+        } catch (\Exception $e) {
+            Log::warning("Failed to pause ML training: " . $e->getMessage());
         }
 
         $trainingJob->update([
@@ -183,6 +249,12 @@ class TrainingController extends Controller
     {
         if (in_array($trainingJob->status, ['completed', 'cancelled'])) {
             return response()->json(['error' => 'Job is already finished'], 400);
+        }
+
+        try {
+            $this->mlService->cancelTraining($trainingJob->id);
+        } catch (\Exception $e) {
+            Log::warning("Failed to cancel ML training: " . $e->getMessage());
         }
 
         $trainingJob->update([

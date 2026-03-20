@@ -26,16 +26,19 @@ Route::post('/record/store', [RecordController::class, 'storeRecording'])->name(
 // Training
 Route::get('/training', [TrainingController::class, 'index'])->name('training.index');
 Route::post('/training/start', [TrainingController::class, 'start'])->name('training.start')->middleware('throttle:5,1');
-Route::post('/training/{trainingJob}/simulate', [TrainingController::class, 'simulateEpoch'])->name('training.simulate');
 Route::get('/training/{trainingJob}/progress', [TrainingController::class, 'progress'])->name('training.progress');
 Route::post('/training/{trainingJob}/stop', [TrainingController::class, 'stop'])->name('training.stop');
 Route::post('/training/{trainingJob}/resume', [TrainingController::class, 'resume'])->name('training.resume');
 Route::post('/training/{trainingJob}/cancel', [TrainingController::class, 'cancel'])->name('training.cancel');
 
+// ML Service Callback (internal API)
+Route::post('/api/ml/training-callback', [TrainingController::class, 'mlCallback'])->name('ml.callback');
+
 // Evaluation
 Route::get('/evaluate', [EvaluationController::class, 'index'])->name('evaluate.index');
 Route::post('/evaluate', [EvaluationController::class, 'evaluate'])->name('evaluate.run')->middleware('throttle:30,1');
 Route::post('/evaluate/batch', [EvaluationController::class, 'batchEvaluate'])->name('evaluate.batch')->middleware('throttle:10,1');
+Route::post('/evaluate/live-transcribe', [EvaluationController::class, 'liveTranscribe'])->name('evaluate.live')->middleware('throttle:30,1');
 
 // Model Management
 Route::get('/models', [AiModelController::class, 'index'])->name('models.index');
@@ -43,3 +46,4 @@ Route::get('/models/{aiModel}', [AiModelController::class, 'show'])->name('model
 Route::put('/models/{aiModel}', [AiModelController::class, 'update'])->name('models.update');
 Route::delete('/models/{aiModel}', [AiModelController::class, 'destroy'])->name('models.destroy');
 Route::post('/models/{aiModel}/deploy', [AiModelController::class, 'deploy'])->name('models.deploy');
+Route::post('/models/{aiModel}/export-onnx', [AiModelController::class, 'exportOnnx'])->name('models.export');

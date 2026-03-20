@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    'ml' => [
+        'url' => env('ML_SERVICE_URL', 'http://localhost:8100'),
+        'secret' => env('ML_SERVICE_SECRET', 'ml-service-secret-key'),
+        'timeout' => env('ML_SERVICE_TIMEOUT', 300),
+    ],
+
 ];

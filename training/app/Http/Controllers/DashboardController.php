@@ -5,10 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\AudioSample;
 use App\Models\TrainingJob;
 use App\Models\AiModel;
+use App\Services\MlServiceClient;
 use Illuminate\View\View;
 
 class DashboardController extends Controller
 {
+    public function __construct(
+        private readonly MlServiceClient $mlService,
+    ) {}
+
     public function index(): View
     {
         // Single aggregate query instead of 4 separate ones
@@ -34,9 +39,14 @@ class DashboardController extends Controller
             ->take(30)
             ->get(['accuracy', 'completed_at', 'name']);
 
+        // ML Service status
+        $mlHealthy = $this->mlService->isHealthy();
+        $mlHealth = $this->mlService->health();
+
         return view('dashboard', compact(
             'totalSamples', 'totalHours', 'modelsCount', 'bestAccuracy',
-            'recentJobs', 'recentSamples', 'categories', 'accuracyHistory'
+            'recentJobs', 'recentSamples', 'categories', 'accuracyHistory',
+            'mlHealthy', 'mlHealth'
         ));
     }
 }
