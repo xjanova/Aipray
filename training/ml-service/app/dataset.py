@@ -72,16 +72,8 @@ class ChantingDataset(Dataset):
             }
 
         except Exception as e:
-            logger.warning(f"Error loading sample {file_path}: {e}")
-            # Return a dummy sample on error
-            dummy_audio = np.zeros(self.sr, dtype=np.float32)
-            input_features = self.processor(
-                dummy_audio, sampling_rate=self.sr, return_tensors="pt"
-            ).input_features.squeeze(0)
-            labels = self.processor.tokenizer(
-                "", return_tensors="pt", padding=False
-            ).input_ids.squeeze(0)
-            return {"input_features": input_features, "labels": labels}
+            logger.error(f"Failed to load sample {file_path}: {e}")
+            raise RuntimeError(f"Failed to load audio sample {file_path}: {e}") from e
 
 
 class DataCollatorSpeechSeq2Seq:

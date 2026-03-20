@@ -1,12 +1,13 @@
 """FastAPI ML Service for Aipray Thai Chanting AI Training."""
 
+import json
 import logging
-import os
 import threading
 import traceback
 from pathlib import Path
 from typing import Optional
 
+import torch
 from fastapi import FastAPI, File, Form, HTTPException, Header, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -15,11 +16,13 @@ from .config import (
     API_HOST,
     API_PORT,
     LARAVEL_API_SECRET,
+    LARAVEL_BASE_URL,
     LARAVEL_STORAGE_PATH,
     MODELS_DIR,
 )
+from .dataset import prepare_dataset_from_db
 from .inference import InferenceEngine
-from .trainer import WhisperTrainer, get_device
+from .trainer import WhisperTrainer, get_device, notify_laravel
 
 # Thread-safe lock for active_trainers dict
 _trainers_lock = threading.Lock()
@@ -35,10 +38,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[LARAVEL_BASE_URL, "http://localhost:8000", "http://127.0.0.1:8000"],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 # Global state
@@ -54,7 +57,7 @@ def verify_secret(authorization: Optional[str] = None) -> bool:
 
 
 def _safe_resolve_path(file_path: str, allowed_bases: list[Path]) -> Path:
-    """Resolve a file path and ensure it's within allowed directories (prevent path traversal)."""
+    """Resolve file path and ensure it's within allowed directories (prevent path traversal)."""
     resolved = Path(file_path).resolve()
     for base in allowed_bases:
         try:
@@ -62,7 +65,20 @@ def _safe_resolve_path(file_path: str, allowed_bases: list[Path]) -> Path:
             return resolved
         except ValueError:
             continue
-    raise HTTPException(403, f"Access denied: path outside allowed directories")
+    raise HTTPException(403, "Access denied: path outside allowed directories")
+
+
+def _cleanup_trainer(trainer: WhisperTrainer) -> None:
+    """Free GPU/CPU memory after training."""
+    try:
+        if hasattr(trainer, 'model'):
+            del trainer.model
+        if hasattr(trainer, 'processor'):
+            del trainer.processor
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception as e:
+        logger.warning(f"Trainer cleanup error: {e}")
 
 
 # --- Pydantic Models ---
@@ -99,17 +115,22 @@ class HealthResponse(BaseModel):
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     device = str(get_device())
+    with _trainers_lock:
+        job_count = len(active_trainers)
     return HealthResponse(
         status="ok",
         device=device,
         models_loaded=len(inference_engine.get_loaded_models()),
-        active_training_jobs=len(active_trainers),
+        active_training_jobs=job_count,
     )
 
 
 @app.get("/models")
-async def list_models():
+async def list_models(authorization: str = Header(None)):
     """List all available models (loaded + saved on disk)."""
+    if not verify_secret(authorization):
+        raise HTTPException(401, "Unauthorized")
+
     loaded = inference_engine.get_loaded_models()
 
     saved = []
@@ -119,7 +140,6 @@ async def list_models():
                 config_file = p / "training_config.json"
                 config = {}
                 if config_file.exists():
-                    import json
                     config = json.loads(config_file.read_text())
                 saved.append({
                     "name": p.name,
@@ -149,10 +169,13 @@ async def start_training(
     if not request.samples:
         raise HTTPException(400, "No training samples provided")
 
-    def run_training():
-        try:
-            from .dataset import prepare_dataset_from_db
+    # Validate LARAVEL_STORAGE_PATH exists
+    if not LARAVEL_STORAGE_PATH.exists():
+        raise HTTPException(500, f"Audio storage path not found: {LARAVEL_STORAGE_PATH}")
 
+    def run_training():
+        trainer = None
+        try:
             trainer = WhisperTrainer(
                 base_model=request.base_model,
                 learning_rate=request.learning_rate,
@@ -177,7 +200,6 @@ async def start_training(
 
         except Exception as e:
             logger.error(f"Training job {request.job_id} failed: {e}\n{traceback.format_exc()}")
-            from .trainer import notify_laravel
             notify_laravel(request.job_id, {
                 "status": "failed",
                 "log": f"Training failed: {str(e)}\n{traceback.format_exc()}",
@@ -185,6 +207,8 @@ async def start_training(
         finally:
             with _trainers_lock:
                 active_trainers.pop(request.job_id, None)
+            if trainer:
+                _cleanup_trainer(trainer)
 
     thread = threading.Thread(target=run_training, daemon=True)
     thread.start()
@@ -229,11 +253,15 @@ async def cancel_training(job_id: int, authorization: str = Header(None)):
 
 
 @app.get("/train/status")
-async def training_status():
+async def training_status(authorization: str = Header(None)):
     """Get status of all active training jobs."""
+    if not verify_secret(authorization):
+        raise HTTPException(401, "Unauthorized")
+    with _trainers_lock:
+        jobs = list(active_trainers.keys())
     return {
-        "active_jobs": list(active_trainers.keys()),
-        "count": len(active_trainers),
+        "active_jobs": jobs,
+        "count": len(jobs),
     }
 
 
@@ -244,14 +272,17 @@ async def transcribe_file(
     audio: UploadFile = File(...),
     model_id: str = Form("default"),
     language: str = Form("th"),
+    authorization: str = Header(None),
 ):
     """Transcribe an uploaded audio file."""
+    if not verify_secret(authorization):
+        raise HTTPException(401, "Unauthorized")
+
     audio_bytes = await audio.read()
     if not audio_bytes:
         raise HTTPException(400, "Empty audio file")
 
     try:
-        # Auto-load base model if no model loaded
         if not inference_engine.get_loaded_models():
             inference_engine.load_base_model("whisper-base")
             model_id = "whisper-base"
@@ -261,7 +292,7 @@ async def transcribe_file(
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
+        logger.error(f"Transcription failed: {e}\n{traceback.format_exc()}")
         raise HTTPException(500, f"Transcription failed: {str(e)}")
 
 
@@ -276,11 +307,10 @@ async def transcribe_path(
     if not verify_secret(authorization):
         raise HTTPException(401, "Unauthorized")
 
-    # Validate path is within allowed directories
     safe_path = _safe_resolve_path(file_path, [LARAVEL_STORAGE_PATH, MODELS_DIR])
 
     if not safe_path.exists():
-        raise HTTPException(404, f"File not found")
+        raise HTTPException(404, "File not found")
 
     try:
         if not inference_engine.get_loaded_models():
@@ -290,7 +320,7 @@ async def transcribe_path(
         result = inference_engine.transcribe_file(str(safe_path), model_id, language)
         return result
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
+        logger.error(f"Transcription failed: {e}\n{traceback.format_exc()}")
         raise HTTPException(500, f"Transcription failed: {str(e)}")
 
 
@@ -306,9 +336,11 @@ async def load_model(
     if not verify_secret(authorization):
         raise HTTPException(401, "Unauthorized")
 
+    safe_path = _safe_resolve_path(model_path, [MODELS_DIR])
+
     try:
-        inference_engine.load_model(model_path, model_id)
-        return {"message": f"Model '{model_id}' loaded from {model_path}"}
+        inference_engine.load_model(str(safe_path), model_id)
+        return {"message": f"Model '{model_id}' loaded"}
     except Exception as e:
         raise HTTPException(500, f"Failed to load model: {str(e)}")
 
@@ -347,18 +379,23 @@ async def export_onnx(
     if not verify_secret(authorization):
         raise HTTPException(401, "Unauthorized")
 
+    safe_model_path = _safe_resolve_path(model_path, [MODELS_DIR])
+
+    if output_path:
+        safe_output = _safe_resolve_path(output_path, [MODELS_DIR])
+    else:
+        safe_output = None
+
     try:
-        from .trainer import WhisperTrainer
-        # Determine base model from config
-        import json
-        config_file = Path(model_path) / "training_config.json"
+        config_file = safe_model_path / "training_config.json"
         base_model = "whisper-base"
         if config_file.exists():
             config = json.loads(config_file.read_text())
             base_model = config.get("base_model", base_model)
 
         trainer = WhisperTrainer(base_model=base_model)
-        onnx_path = trainer.export_onnx(output_path)
+        onnx_path = trainer.export_onnx(str(safe_output) if safe_output else None)
+        _cleanup_trainer(trainer)
         return {"message": "ONNX export successful", "path": str(onnx_path)}
     except Exception as e:
         raise HTTPException(500, f"ONNX export failed: {str(e)}")
@@ -405,6 +442,7 @@ async def evaluate_audio(
             "latency_ms": result["latency_ms"],
         }
     except Exception as e:
+        logger.error(f"Evaluation failed: {e}\n{traceback.format_exc()}")
         raise HTTPException(500, f"Evaluation failed: {str(e)}")
 
 

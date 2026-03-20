@@ -2,6 +2,7 @@
 
 import json
 import logging
+import threading
 import time
 import traceback
 from pathlib import Path
@@ -76,8 +77,8 @@ class WhisperTrainer:
         self.warmup_steps = warmup_steps
         self.job_id = job_id
 
-        self._cancelled = False
-        self._paused = False
+        self._cancelled = threading.Event()
+        self._paused = threading.Event()
 
         logger.info(f"Initializing trainer: model={self.model_name}, device={self.device}")
 
@@ -98,13 +99,13 @@ class WhisperTrainer:
         self.model.to(self.device)
 
     def cancel(self):
-        self._cancelled = True
+        self._cancelled.set()
 
     def pause(self):
-        self._paused = True
+        self._paused.set()
 
     def resume(self):
-        self._paused = False
+        self._paused.clear()
 
     def train(
         self,
@@ -155,13 +156,13 @@ class WhisperTrainer:
         start_time = time.time()
 
         for epoch in range(1, self.epochs + 1):
-            if self._cancelled:
+            if self._cancelled.is_set():
                 log_lines.append(f"\n=== Training Cancelled at epoch {epoch} ===")
                 break
 
-            while self._paused:
+            while self._paused.is_set():
                 time.sleep(1)
-                if self._cancelled:
+                if self._cancelled.is_set():
                     break
 
             # Training phase
@@ -169,7 +170,7 @@ class WhisperTrainer:
             train_losses = []
 
             for step, batch in enumerate(train_loader):
-                if self._cancelled:
+                if self._cancelled.is_set():
                     break
 
                 batch = {k: v.to(self.device) for k, v in batch.items()}
@@ -190,7 +191,7 @@ class WhisperTrainer:
                     avg_loss = np.mean(train_losses[-10:])
                     logger.info(f"Epoch {epoch}, Step {step+1}/{len(train_loader)}, Loss: {avg_loss:.4f}")
 
-            if self._cancelled:
+            if self._cancelled.is_set():
                 break
 
             # Validation phase
@@ -251,7 +252,7 @@ class WhisperTrainer:
         log_lines.append(f"Model saved: {final_path}")
 
         result = {
-            "status": "cancelled" if self._cancelled else "completed",
+            "status": "cancelled" if self._cancelled.is_set() else "completed",
             "model_path": str(final_path),
             "best_model_path": str(best_model_path) if best_model_path else str(final_path),
             "loss_history": loss_history,

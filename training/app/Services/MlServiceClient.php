@@ -74,6 +74,18 @@ class MlServiceClient
     }
 
     /**
+     * Resume a paused training job.
+     */
+    public function resumeTraining(int $jobId): array
+    {
+        $response = Http::timeout(30)
+            ->withToken($this->secret)
+            ->post("{$this->baseUrl}/train/{$jobId}/resume");
+
+        return $response->json() ?? ['message' => 'Request sent'];
+    }
+
+    /**
      * Cancel a training job.
      */
     public function cancelTraining(int $jobId): array
@@ -112,6 +124,7 @@ class MlServiceClient
     public function transcribeUpload($file, string $modelId = 'default'): array
     {
         $response = Http::timeout($this->timeout)
+            ->withToken($this->secret)
             ->attach('audio', file_get_contents($file->getRealPath()), $file->getClientOriginalName())
             ->post("{$this->baseUrl}/transcribe/file", [
                 'model_id' => $modelId,
@@ -167,7 +180,7 @@ class MlServiceClient
     public function getModels(): array
     {
         try {
-            $response = Http::timeout(10)->get("{$this->baseUrl}/models");
+            $response = Http::timeout(10)->withToken($this->secret)->get("{$this->baseUrl}/models");
             return $response->ok() ? $response->json() : [];
         } catch (\Exception $e) {
             return [];
