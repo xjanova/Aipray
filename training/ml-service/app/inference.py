@@ -1,6 +1,7 @@
 """Real inference engine for Thai chanting speech recognition."""
 
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import Optional
@@ -19,6 +20,7 @@ class InferenceEngine:
 
     def __init__(self):
         self._models: dict[str, dict] = {}
+        self._lock = threading.Lock()
         self._device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"InferenceEngine initialized on {self._device}")
 
@@ -36,11 +38,17 @@ class InferenceEngine:
         model.to(self._device)
         model.eval()
 
-        self._models[model_id] = {
-            "model": model,
-            "processor": processor,
-            "path": str(model_path),
-        }
+        with self._lock:
+            if model_id in self._models:
+                del self._models[model_id]
+                if self._device.type == "cuda":
+                    torch.cuda.empty_cache()
+
+            self._models[model_id] = {
+                "model": model,
+                "processor": processor,
+                "path": str(model_path),
+            }
         logger.info(f"Model '{model_id}' loaded successfully")
 
     def load_base_model(self, base_model: str = "whisper-base") -> None:
@@ -55,11 +63,17 @@ class InferenceEngine:
         model.to(self._device)
         model.eval()
 
-        self._models[base_model] = {
-            "model": model,
-            "processor": processor,
-            "path": model_name,
-        }
+        with self._lock:
+            if base_model in self._models:
+                del self._models[base_model]
+                if self._device.type == "cuda":
+                    torch.cuda.empty_cache()
+
+            self._models[base_model] = {
+                "model": model,
+                "processor": processor,
+                "path": model_name,
+            }
 
     def load_onnx_model(self, model_path: str, model_id: str = "onnx") -> None:
         """Load an ONNX model for faster inference."""
@@ -71,12 +85,13 @@ class InferenceEngine:
             processor = WhisperProcessor.from_pretrained(str(model_path))
             model = ORTModelForSpeechSeq2Seq.from_pretrained(str(model_path))
 
-            self._models[model_id] = {
-                "model": model,
-                "processor": processor,
-                "path": str(model_path),
-                "is_onnx": True,
-            }
+            with self._lock:
+                self._models[model_id] = {
+                    "model": model,
+                    "processor": processor,
+                    "path": str(model_path),
+                    "is_onnx": True,
+                }
             logger.info(f"ONNX model '{model_id}' loaded")
         except Exception as e:
             logger.error(f"Failed to load ONNX model: {e}")
@@ -111,13 +126,15 @@ class InferenceEngine:
         language: str = "th",
     ) -> dict:
         """Internal transcription method."""
-        if model_id not in self._models:
-            available = list(self._models.keys())
-            raise ValueError(f"Model '{model_id}' not loaded. Available: {available}")
-
-        model_info = self._models[model_id]
-        model = model_info["model"]
-        processor = model_info["processor"]
+        with self._lock:
+            model_info = self._models.get(model_id)
+            if model_info is None:
+                available = list(self._models.keys())
+                raise ValueError(f"Model '{model_id}' not loaded. Available: {available}")
+            # Hold references so model can't be unloaded during inference
+            model = model_info["model"]
+            processor = model_info["processor"]
+            is_onnx = model_info.get("is_onnx", False)
 
         start_time = time.time()
 
@@ -126,7 +143,7 @@ class InferenceEngine:
             audio, sampling_rate=DEFAULT_SAMPLE_RATE, return_tensors="pt"
         ).input_features
 
-        if not model_info.get("is_onnx"):
+        if not is_onnx:
             input_features = input_features.to(self._device)
 
         # Generate transcription
@@ -187,15 +204,17 @@ class InferenceEngine:
 
     def get_loaded_models(self) -> list[dict]:
         """List all loaded models."""
-        return [
-            {"id": mid, "path": info["path"], "onnx": info.get("is_onnx", False)}
-            for mid, info in self._models.items()
-        ]
+        with self._lock:
+            return [
+                {"id": mid, "path": info["path"], "onnx": info.get("is_onnx", False)}
+                for mid, info in self._models.items()
+            ]
 
     def unload_model(self, model_id: str) -> None:
         """Unload a model to free memory."""
-        if model_id in self._models:
-            del self._models[model_id]
-            if self._device.type == "cuda":
-                torch.cuda.empty_cache()
-            logger.info(f"Model '{model_id}' unloaded")
+        with self._lock:
+            if model_id in self._models:
+                del self._models[model_id]
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        logger.info(f"Model '{model_id}' unloaded")

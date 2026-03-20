@@ -230,22 +230,29 @@ class EvaluationController extends Controller
     {
         $n = count($s);
         $m = count($t);
-        $d = [];
 
-        for ($i = 0; $i <= $n; $i++) $d[$i][0] = $i;
-        for ($j = 0; $j <= $m; $j++) $d[0][$j] = $j;
-
-        for ($i = 1; $i <= $n; $i++) {
-            for ($j = 1; $j <= $m; $j++) {
-                $cost = ($s[$i - 1] === $t[$j - 1]) ? 0 : 1;
-                $d[$i][$j] = min(
-                    $d[$i - 1][$j] + 1,
-                    $d[$i][$j - 1] + 1,
-                    $d[$i - 1][$j - 1] + $cost
-                );
-            }
+        // Use two-row approach: O(min(n,m)) memory instead of O(n*m)
+        if ($n < $m) {
+            [$s, $t] = [$t, $s];
+            [$n, $m] = [$m, $n];
         }
 
-        return $d[$n][$m];
+        $prev = range(0, $m);
+        $curr = [];
+
+        for ($i = 1; $i <= $n; $i++) {
+            $curr[0] = $i;
+            for ($j = 1; $j <= $m; $j++) {
+                $cost = ($s[$i - 1] === $t[$j - 1]) ? 0 : 1;
+                $curr[$j] = min(
+                    $prev[$j] + 1,
+                    $curr[$j - 1] + 1,
+                    $prev[$j - 1] + $cost
+                );
+            }
+            $prev = $curr;
+        }
+
+        return $prev[$m];
     }
 }
