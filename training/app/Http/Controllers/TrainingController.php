@@ -129,10 +129,12 @@ class TrainingController extends Controller
             ]);
 
             if ($isComplete) {
-                $modelCount = AiModel::count() + 1;
+                // Use max(id) + 1 inside transaction to avoid race condition on version naming
+                $maxId = AiModel::lockForUpdate()->max('id') ?? 0;
+                $modelVersion = $maxId + 1;
                 AiModel::create([
-                    'name' => "Aipray-{$trainingJob->base_model}-v{$modelCount}",
-                    'version' => '1.' . $modelCount,
+                    'name' => "Aipray-{$trainingJob->base_model}-v{$modelVersion}",
+                    'version' => '1.' . $modelVersion,
                     'base_model' => $trainingJob->base_model,
                     'training_job_id' => $trainingJob->id,
                     'accuracy' => $trainingJob->accuracy,
@@ -151,6 +153,10 @@ class TrainingController extends Controller
 
     public function stop(TrainingJob $trainingJob): JsonResponse
     {
+        if ($trainingJob->status !== 'running') {
+            return response()->json(['error' => 'Job is not running'], 400);
+        }
+
         $trainingJob->update([
             'status' => 'paused',
             'log' => $trainingJob->log . "\n\n=== Training Paused ===",
@@ -159,8 +165,26 @@ class TrainingController extends Controller
         return response()->json($trainingJob);
     }
 
+    public function resume(TrainingJob $trainingJob): JsonResponse
+    {
+        if ($trainingJob->status !== 'paused') {
+            return response()->json(['error' => 'Job is not paused'], 400);
+        }
+
+        $trainingJob->update([
+            'status' => 'running',
+            'log' => $trainingJob->log . "\n\n=== Training Resumed ===",
+        ]);
+
+        return response()->json($trainingJob);
+    }
+
     public function cancel(TrainingJob $trainingJob): JsonResponse
     {
+        if (in_array($trainingJob->status, ['completed', 'cancelled'])) {
+            return response()->json(['error' => 'Job is already finished'], 400);
+        }
+
         $trainingJob->update([
             'status' => 'cancelled',
             'completed_at' => now(),
