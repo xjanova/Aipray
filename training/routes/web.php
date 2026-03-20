@@ -45,3 +45,4 @@ Route::get('/models/{aiModel}', [AiModelController::class, 'show'])->name('model
 Route::put('/models/{aiModel}', [AiModelController::class, 'update'])->name('models.update');
 Route::delete('/models/{aiModel}', [AiModelController::class, 'destroy'])->name('models.destroy');
 Route::post('/models/{aiModel}/deploy', [AiModelController::class, 'deploy'])->name('models.deploy');
+Route::post('/models/{aiModel}/export-onnx', [AiModelController::class, 'exportOnnx'])->name('models.export');

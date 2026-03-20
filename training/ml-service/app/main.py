@@ -21,6 +21,9 @@ from .config import (
 from .inference import InferenceEngine
 from .trainer import WhisperTrainer, get_device
 
+# Thread-safe lock for active_trainers dict
+_trainers_lock = threading.Lock()
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -48,6 +51,18 @@ def verify_secret(authorization: Optional[str] = None) -> bool:
         return False
     token = authorization.replace("Bearer ", "")
     return token == LARAVEL_API_SECRET
+
+
+def _safe_resolve_path(file_path: str, allowed_bases: list[Path]) -> Path:
+    """Resolve a file path and ensure it's within allowed directories (prevent path traversal)."""
+    resolved = Path(file_path).resolve()
+    for base in allowed_bases:
+        try:
+            resolved.relative_to(base.resolve())
+            return resolved
+        except ValueError:
+            continue
+    raise HTTPException(403, f"Access denied: path outside allowed directories")
 
 
 # --- Pydantic Models ---
@@ -127,8 +142,9 @@ async def start_training(
     if not verify_secret(authorization):
         raise HTTPException(401, "Unauthorized")
 
-    if request.job_id in active_trainers:
-        raise HTTPException(409, f"Training job {request.job_id} is already running")
+    with _trainers_lock:
+        if request.job_id in active_trainers:
+            raise HTTPException(409, f"Training job {request.job_id} is already running")
 
     if not request.samples:
         raise HTTPException(400, "No training samples provided")
@@ -145,7 +161,8 @@ async def start_training(
                 optimizer_name=request.optimizer,
                 job_id=request.job_id,
             )
-            active_trainers[request.job_id] = trainer
+            with _trainers_lock:
+                active_trainers[request.job_id] = trainer
 
             train_dataset, val_dataset = prepare_dataset_from_db(
                 samples_data=request.samples,
@@ -166,7 +183,8 @@ async def start_training(
                 "log": f"Training failed: {str(e)}\n{traceback.format_exc()}",
             })
         finally:
-            active_trainers.pop(request.job_id, None)
+            with _trainers_lock:
+                active_trainers.pop(request.job_id, None)
 
     thread = threading.Thread(target=run_training, daemon=True)
     thread.start()
@@ -178,7 +196,8 @@ async def start_training(
 async def pause_training(job_id: int, authorization: str = Header(None)):
     if not verify_secret(authorization):
         raise HTTPException(401, "Unauthorized")
-    trainer = active_trainers.get(job_id)
+    with _trainers_lock:
+        trainer = active_trainers.get(job_id)
     if not trainer:
         raise HTTPException(404, "Training job not found")
     trainer.pause()
@@ -189,7 +208,8 @@ async def pause_training(job_id: int, authorization: str = Header(None)):
 async def resume_training(job_id: int, authorization: str = Header(None)):
     if not verify_secret(authorization):
         raise HTTPException(401, "Unauthorized")
-    trainer = active_trainers.get(job_id)
+    with _trainers_lock:
+        trainer = active_trainers.get(job_id)
     if not trainer:
         raise HTTPException(404, "Training job not found")
     trainer.resume()
@@ -200,7 +220,8 @@ async def resume_training(job_id: int, authorization: str = Header(None)):
 async def cancel_training(job_id: int, authorization: str = Header(None)):
     if not verify_secret(authorization):
         raise HTTPException(401, "Unauthorized")
-    trainer = active_trainers.get(job_id)
+    with _trainers_lock:
+        trainer = active_trainers.get(job_id)
     if not trainer:
         raise HTTPException(404, "Training job not found")
     trainer.cancel()
@@ -255,15 +276,18 @@ async def transcribe_path(
     if not verify_secret(authorization):
         raise HTTPException(401, "Unauthorized")
 
-    if not Path(file_path).exists():
-        raise HTTPException(404, f"File not found: {file_path}")
+    # Validate path is within allowed directories
+    safe_path = _safe_resolve_path(file_path, [LARAVEL_STORAGE_PATH, MODELS_DIR])
+
+    if not safe_path.exists():
+        raise HTTPException(404, f"File not found")
 
     try:
         if not inference_engine.get_loaded_models():
             inference_engine.load_base_model("whisper-base")
             model_id = "whisper-base"
 
-        result = inference_engine.transcribe_file(file_path, model_id, language)
+        result = inference_engine.transcribe_file(str(safe_path), model_id, language)
         return result
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
