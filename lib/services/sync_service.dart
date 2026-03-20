@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/prayer_session.dart';
+import 'update_service.dart';
 
 class SyncService {
   static const _defaultBaseUrl = 'https://xmanstudio.com/api/aipray';
@@ -232,6 +233,6 @@ class SyncService {
   Map<String, String> _headers() => {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
-        'X-App-Version': '1.0.0',
+        'X-App-Version': UpdateService.currentVersion,
       };
 }
