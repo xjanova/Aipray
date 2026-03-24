@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import '../main.dart';
@@ -165,8 +166,8 @@ class UpdateService {
     }
   }
 
-  /// Install the downloaded APK (Android only).
-  /// Opens the system package installer via content:// URI.
+  /// Install the downloaded APK via native MethodChannel.
+  /// Uses FileProvider for Android 7+ content:// URI compatibility.
   Future<bool> installUpdate() async {
     if (downloadedFilePath == null || kIsWeb) return false;
 
@@ -174,21 +175,29 @@ class UpdateService {
 
     try {
       if (Platform.isAndroid) {
-        // Use content:// URI via FileProvider for Android 7+ compatibility.
-        // The actual installation is triggered by opening the APK file with
-        // the system package installer intent.
-        final result = await Process.run('am', [
-          'start',
-          '-a', 'android.intent.action.INSTALL_PACKAGE',
-          '-t', 'application/vnd.android.package-archive',
-          '-d', 'file://$downloadedFilePath',
-          '-n', 'com.android.packageinstaller/.PackageInstallerActivity',
-          '--grant-read-uri-permission',
-        ]);
-        return result.exitCode == 0;
+        const channel = MethodChannel('com.xjanova.aipray/installer');
+
+        // Check if we have install permission
+        final canInstall =
+            await channel.invokeMethod<bool>('canRequestInstall');
+        if (canInstall != true) {
+          await channel.invokeMethod('requestInstallPermission');
+          state.value = UpdateState.readyToInstall;
+          return false;
+        }
+
+        await channel.invokeMethod('installApk', {
+          'filePath': downloadedFilePath,
+        });
+        return true;
       }
       return false;
+    } on PlatformException catch (e) {
+      debugPrint('Install failed: ${e.message}');
+      state.value = UpdateState.error;
+      return false;
     } catch (e) {
+      debugPrint('Install failed: $e');
       state.value = UpdateState.error;
       return false;
     }

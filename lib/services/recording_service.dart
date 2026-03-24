@@ -54,7 +54,7 @@ class RecordingService {
 
   /// Stop recording and upload the segment.
   Future<bool> stopAndUpload() async {
-    if (_currentPath == null) return false;
+    if (_currentPath == null || _currentChantId == null) return false;
 
     final path = await _recorder.stop();
     if (path == null) {

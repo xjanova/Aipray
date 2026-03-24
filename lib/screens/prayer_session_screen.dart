@@ -74,7 +74,7 @@ class _PrayerSessionScreenState extends State<PrayerSessionScreen>
 
     // Check if user opted into AI data contribution
     _isContributing =
-        storageService.getSetting<bool>('contribute_data') ?? false;
+        storageService.getSetting<bool>('contributeData') ?? false;
     if (_isContributing) {
       _recordingService.init();
     }
