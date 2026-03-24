@@ -50,3 +50,4 @@ app.*.map.json
 # Environment
 .env
 *.env
+android/app/aipray-release.jks
