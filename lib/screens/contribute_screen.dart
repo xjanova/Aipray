@@ -12,6 +12,8 @@ class ContributeScreen extends StatefulWidget {
 class _ContributeScreenState extends State<ContributeScreen> {
   late bool _contributeEnabled;
   int _uploadedCount = 0;
+  int _totalContributors = 0;
+  int _totalSamples = 0;
 
   @override
   void initState() {
@@ -20,6 +22,17 @@ class _ContributeScreenState extends State<ContributeScreen> {
         storageService.getSetting<bool>('contributeData') ?? false;
     _uploadedCount =
         storageService.getSetting<int>('uploadedAudioCount') ?? 0;
+    _fetchGlobalStats();
+  }
+
+  Future<void> _fetchGlobalStats() async {
+    final stats = await syncService.fetchStats();
+    if (stats != null && mounted) {
+      setState(() {
+        _totalContributors = stats['contributors'] as int? ?? 0;
+        _totalSamples = stats['total_audio_samples'] as int? ?? 0;
+      });
+    }
   }
 
   @override
@@ -149,7 +162,13 @@ class _ContributeScreenState extends State<ContributeScreen> {
                 _StatRow(
                   icon: Icons.group,
                   label: 'ผู้มีส่วนร่วมทั้งหมด',
-                  value: 'กำลังโหลด...',
+                  value: _totalContributors > 0 ? '$_totalContributors คน' : '-',
+                ),
+                const SizedBox(height: 8),
+                _StatRow(
+                  icon: Icons.cloud_done,
+                  label: 'ตัวอย่างเสียงรวมทั้งระบบ',
+                  value: _totalSamples > 0 ? '$_totalSamples' : '-',
                 ),
               ],
             ),

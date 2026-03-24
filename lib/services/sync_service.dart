@@ -7,7 +7,7 @@ import '../models/prayer_session.dart';
 import 'update_service.dart';
 
 class SyncService {
-  static const _defaultBaseUrl = 'https://xmanstudio.com/api/aipray';
+  static const _defaultBaseUrl = 'https://xman4289.com/api/aipray';
   static const _queueKey = 'aipray_sync_queue';
   static const _syncTokenKey = 'aipray_sync_token';
 

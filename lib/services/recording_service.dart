@@ -28,28 +28,35 @@ class RecordingService {
     required String chantId,
     required int lineIndex,
   }) async {
-    if (!await _recorder.hasPermission()) {
+    try {
+      if (!await _recorder.hasPermission()) {
+        debugPrint('Recording permission denied');
+        return false;
+      }
+
+      final dir = await _getRecordingDir();
+      final fileName = '${chantId}_line${lineIndex}_${DateTime.now().millisecondsSinceEpoch}.wav';
+      _currentPath = '${dir.path}/$fileName';
+      _currentChantId = chantId;
+      _currentLineIndex = lineIndex;
+      _recordingStart = DateTime.now();
+
+      await _recorder.start(
+        const RecordConfig(
+          encoder: AudioEncoder.wav,
+          sampleRate: 16000,
+          numChannels: 1,
+          bitRate: 256000,
+        ),
+        path: _currentPath!,
+      );
+
+      return true;
+    } catch (e) {
+      debugPrint('Recording start failed: $e');
+      _reset();
       return false;
     }
-
-    final dir = await _getRecordingDir();
-    final fileName = '${chantId}_line${lineIndex}_${DateTime.now().millisecondsSinceEpoch}.wav';
-    _currentPath = '${dir.path}/$fileName';
-    _currentChantId = chantId;
-    _currentLineIndex = lineIndex;
-    _recordingStart = DateTime.now();
-
-    await _recorder.start(
-      const RecordConfig(
-        encoder: AudioEncoder.wav,
-        sampleRate: 16000,
-        numChannels: 1,
-        bitRate: 256000,
-      ),
-      path: _currentPath!,
-    );
-
-    return true;
   }
 
   /// Stop recording and upload the segment.
@@ -87,9 +94,11 @@ class RecordingService {
         deviceInfo: _deviceInfo,
       );
 
-      // Clean up local file after upload
+      // Clean up local file and increment counter after successful upload
       if (ok) {
         await file.delete();
+        final count = storageService.getSetting<int>('uploadedAudioCount') ?? 0;
+        await storageService.setSetting('uploadedAudioCount', count + 1);
       }
 
       _reset();
