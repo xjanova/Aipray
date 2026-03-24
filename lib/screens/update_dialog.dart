@@ -393,9 +393,19 @@ class _UpdateDialogState extends State<UpdateDialog>
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
-                onPressed: () {
-                  widget.updateService.installUpdate();
-                  Navigator.pop(context);
+                onPressed: () async {
+                  final success = await widget.updateService.installUpdate();
+                  if (!context.mounted) return;
+                  if (success) {
+                    Navigator.pop(context);
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('ติดตั้งไม่สำเร็จ กรุณาลองใหม่อีกครั้ง'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF10B981),

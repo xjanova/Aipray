@@ -116,7 +116,7 @@ class _ContributeScreenState extends State<ContributeScreen> {
                             fontWeight: FontWeight.w600),
                       ),
                       Text(
-                        _contributeEnabled ? 'กำลังส่งข้อมูลเมื่อเชื่อมต่อ WiFi' : 'ปิดอยู่',
+                        _contributeEnabled ? 'กำลังส่งข้อมูลเมื่อเชื่อมต่ออินเทอร์เน็ต' : 'ปิดอยู่',
                         style: const TextStyle(
                             color: Color(0xFF888888), fontSize: 12),
                       ),

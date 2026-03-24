@@ -749,7 +749,7 @@ class _RecommendedCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  '${chant.estimatedDuration} นาที',
+                  '${chant.estimatedDuration?.inMinutes ?? 0} นาที',
                   style: const TextStyle(color: Color(0xFF888888), fontSize: 11),
                 ),
               ],

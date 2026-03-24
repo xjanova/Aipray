@@ -342,7 +342,9 @@ class _InsightsCard extends StatelessWidget {
     }
 
     // Average duration
-    final avgDuration = sessions.fold(Duration.zero, (s, e) => s + e.duration) ~/ sessions.length;
+    final avgDuration = sessions.isNotEmpty
+        ? sessions.fold(Duration.zero, (s, e) => s + e.duration) ~/ sessions.length
+        : Duration.zero;
     if (avgDuration.inMinutes > 0) {
       insights.add(_Insight('📊', 'เวลาสวดเฉลี่ย ${avgDuration.inMinutes} นาทีต่อครั้ง'));
     }
@@ -567,6 +569,7 @@ class _SessionTile extends StatelessWidget {
   String _formatDate(DateTime dt) {
     final now = DateTime.now();
     final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'เมื่อสักครู่';
     if (diff.inMinutes < 60) return '${diff.inMinutes} นาทีที่แล้ว';
     if (diff.inHours < 24) return '${diff.inHours} ชั่วโมงที่แล้ว';
     if (diff.inDays < 7) return '${diff.inDays} วันที่แล้ว';

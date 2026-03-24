@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
@@ -22,6 +23,12 @@ class AudioService {
   bool _isListening = false;
   AudioServiceStatus _status = AudioServiceStatus.idle;
   String _lastError = '';
+
+  // Exponential backoff for restart retries
+  int _consecutiveErrors = 0;
+  static const int _maxRetries = 10;
+  static const int _baseDelayMs = 300;
+  static const int _maxDelayMs = 30000; // 30 seconds max
 
   TranscriptCallback? onTranscript;
   StatusCallback? onStatusChange;
@@ -64,7 +71,7 @@ class AudioService {
       if (!ok) return;
     }
 
-    if (_isListening) return;
+    if (_isListening && _speech.isListening) return;
 
     try {
       _isListening = true;
@@ -92,6 +99,7 @@ class AudioService {
     if (!_isListening) return;
 
     _isListening = false;
+    _consecutiveErrors = 0;
     await _speech.stop();
     _setStatus(AudioServiceStatus.idle);
   }
@@ -100,31 +108,25 @@ class AudioService {
     _speech.stop();
     _speech.cancel();
     _isListening = false;
+    _consecutiveErrors = 0;
     onTranscript = null;
     onStatusChange = null;
   }
 
   void _onResult(SpeechRecognitionResult result) {
+    // Reset error count on successful result
+    _consecutiveErrors = 0;
     onTranscript?.call(result.recognizedWords, result.finalResult);
   }
 
   void _onError(SpeechRecognitionError error) {
     _lastError = error.errorMsg;
 
-    // Auto-restart on transient errors if we want to keep listening
-    if (_isListening && error.errorMsg == 'error_no_match') {
-      // No match is common - just restart
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (_isListening) startListening();
-      });
-      return;
-    }
-
-    if (_isListening && error.errorMsg == 'error_speech_timeout') {
-      // Timeout - restart listening
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (_isListening) startListening();
-      });
+    // Auto-restart on transient errors with exponential backoff
+    if (_isListening &&
+        (error.errorMsg == 'error_no_match' ||
+         error.errorMsg == 'error_speech_timeout')) {
+      _restartWithBackoff();
       return;
     }
 
@@ -133,11 +135,30 @@ class AudioService {
 
   void _onSpeechStatus(String status) {
     if (status == 'notListening' && _isListening) {
-      // Speech engine stopped but we want to keep listening - restart
-      Future.delayed(const Duration(milliseconds: 500), () {
-        if (_isListening) startListening();
-      });
+      _restartWithBackoff();
     }
+  }
+
+  void _restartWithBackoff() {
+    _consecutiveErrors++;
+
+    if (_consecutiveErrors > _maxRetries) {
+      _isListening = false;
+      _lastError = 'เสียงสวดยังไม่ชัดเจน กรุณากดเริ่มฟังอีกครั้ง';
+      _setStatus(AudioServiceStatus.error);
+      _consecutiveErrors = 0;
+      return;
+    }
+
+    // Exponential backoff: 300ms, 600ms, 1200ms, 2400ms, ...
+    final delay = min(
+      _baseDelayMs * pow(2, _consecutiveErrors - 1).toInt(),
+      _maxDelayMs,
+    );
+
+    Future.delayed(Duration(milliseconds: delay), () {
+      if (_isListening) startListening();
+    });
   }
 
   void _setStatus(AudioServiceStatus newStatus) {

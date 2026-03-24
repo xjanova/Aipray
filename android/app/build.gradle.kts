@@ -22,11 +22,20 @@ android {
     signingConfigs {
         create("release") {
             val keystoreFile = file("aipray-release.jks")
+            // Load from key.properties (local dev) or env vars (CI)
+            val keyPropsFile = rootProject.file("key.properties")
             if (keystoreFile.exists()) {
                 storeFile = keystoreFile
-                storePassword = System.getenv("KEYSTORE_PASSWORD") ?: "aipray2026"
-                keyAlias = System.getenv("KEY_ALIAS") ?: "aipray"
-                keyPassword = System.getenv("KEY_PASSWORD") ?: "aipray2026"
+                if (keyPropsFile.exists()) {
+                    val props = java.util.Properties().apply { load(keyPropsFile.inputStream()) }
+                    storePassword = props.getProperty("storePassword")
+                    keyAlias = props.getProperty("keyAlias")
+                    keyPassword = props.getProperty("keyPassword")
+                } else {
+                    storePassword = System.getenv("KEYSTORE_PASSWORD")
+                    keyAlias = System.getenv("KEY_ALIAS")
+                    keyPassword = System.getenv("KEY_PASSWORD")
+                }
             }
         }
     }

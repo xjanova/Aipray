@@ -51,3 +51,4 @@ app.*.map.json
 .env
 *.env
 android/app/aipray-release.jks
+android/key.properties

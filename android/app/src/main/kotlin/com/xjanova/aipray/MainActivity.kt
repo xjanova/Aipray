@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -12,9 +14,22 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.xjanova.aipray/installer"
+    private var pendingInstallResult: MethodChannel.Result? = null
+
+    private lateinit var installPermissionLauncher: ActivityResultLauncher<Intent>
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        // Register permission result launcher
+        installPermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { _ ->
+            // Re-check permission after user returns from settings
+            val granted = canRequestInstallPackages()
+            pendingInstallResult?.success(granted)
+            pendingInstallResult = null
+        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -75,12 +90,14 @@ class MainActivity : FlutterActivity() {
 
     private fun requestInstallPermission(result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            pendingInstallResult = result
             val intent = Intent(
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                 Uri.parse("package:$packageName")
             )
-            startActivity(intent)
+            installPermissionLauncher.launch(intent)
+        } else {
+            result.success(true)
         }
-        result.success(true)
     }
 }

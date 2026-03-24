@@ -273,7 +273,7 @@ class _PrayerSessionScreenState extends State<PrayerSessionScreen>
     syncService.uploadSession(session);
   }
 
-  void _goToLine(int index) {
+  void _goToLine(int index, {bool fromNextLine = false}) {
     if (index < 0 || index >= widget.chant.lineCount) return;
 
     // Stop recording previous segment and upload
@@ -281,8 +281,8 @@ class _PrayerSessionScreenState extends State<PrayerSessionScreen>
       _recordingService.stopAndUpload();
     }
 
-    // Check if completed a round
-    if (index == 0 && _currentLine == widget.chant.lineCount - 1) {
+    // Check if completed a round (only if NOT called from _nextLine to avoid double count)
+    if (!fromNextLine && index == 0 && _currentLine == widget.chant.lineCount - 1) {
       _rounds++;
       HapticFeedback.heavyImpact();
       _showRoundCompleteOverlay();
@@ -323,7 +323,7 @@ class _PrayerSessionScreenState extends State<PrayerSessionScreen>
       HapticFeedback.heavyImpact();
       _showRoundCompleteOverlay();
     }
-    _goToLine(next);
+    _goToLine(next, fromNextLine: true);
   }
 
   void _prevLine() {
@@ -382,7 +382,7 @@ class _PrayerSessionScreenState extends State<PrayerSessionScreen>
         _confidence = 1.0;
         _statusText = 'จับตำแหน่งได้';
       });
-      _goToLine(pointer);
+      _goToLine(pointer, fromNextLine: true);
       pointer++;
     });
   }
