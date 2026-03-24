@@ -1,11 +1,10 @@
 package com.xjanova.aipray
 
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import androidx.activity.result.ActivityResultLauncher
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -14,22 +13,11 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private val CHANNEL = "com.xjanova.aipray/installer"
+    private val REQUEST_INSTALL_PERMISSION = 1001
     private var pendingInstallResult: MethodChannel.Result? = null
-
-    private lateinit var installPermissionLauncher: ActivityResultLauncher<Intent>
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-
-        // Register permission result launcher
-        installPermissionLauncher = registerForActivityResult(
-            ActivityResultContracts.StartActivityForResult()
-        ) { _ ->
-            // Re-check permission after user returns from settings
-            val granted = canRequestInstallPackages()
-            pendingInstallResult?.success(granted)
-            pendingInstallResult = null
-        }
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
             .setMethodCallHandler { call, result ->
@@ -51,6 +39,15 @@ class MainActivity : FlutterActivity() {
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_INSTALL_PERMISSION) {
+            val granted = canRequestInstallPackages()
+            pendingInstallResult?.success(granted)
+            pendingInstallResult = null
+        }
     }
 
     private fun installApk(filePath: String, result: MethodChannel.Result) {
@@ -88,6 +85,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    @Suppress("DEPRECATION")
     private fun requestInstallPermission(result: MethodChannel.Result) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             pendingInstallResult = result
@@ -95,7 +93,7 @@ class MainActivity : FlutterActivity() {
                 Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
                 Uri.parse("package:$packageName")
             )
-            installPermissionLauncher.launch(intent)
+            startActivityForResult(intent, REQUEST_INSTALL_PERMISSION)
         } else {
             result.success(true)
         }
