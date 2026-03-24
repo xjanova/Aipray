@@ -47,7 +47,7 @@ class AppVersion {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.2.2';
+  static const String currentVersion = '1.2.3';
   static const String _githubRepo = 'xjanova/Aipray';
   static const String _apiUrl = 'https://api.github.com/repos/$_githubRepo/releases/latest';
   static const String _checkKey = 'last_update_check';
