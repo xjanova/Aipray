@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -22,12 +25,12 @@ android {
     signingConfigs {
         create("release") {
             val keystoreFile = file("aipray-release.jks")
-            // Load from key.properties (local dev) or env vars (CI)
             val keyPropsFile = rootProject.file("key.properties")
             if (keystoreFile.exists()) {
                 storeFile = keystoreFile
                 if (keyPropsFile.exists()) {
-                    val props = java.util.Properties().apply { load(keyPropsFile.inputStream()) }
+                    val props = Properties()
+                    props.load(FileInputStream(keyPropsFile))
                     storePassword = props.getProperty("storePassword")
                     keyAlias = props.getProperty("keyAlias")
                     keyPassword = props.getProperty("keyPassword")
