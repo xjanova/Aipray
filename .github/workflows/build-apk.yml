@@ -4,29 +4,66 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
-  pull_request:
-    branches:
-      - main
   workflow_dispatch:
-    inputs:
-      release_name:
-        description: 'Release name (e.g. v1.0.0)'
-        required: true
-        default: 'v1.0.0'
 
 permissions:
   contents: write
 
 jobs:
   build:
-    name: Build APK
+    name: Build & Release APK
     runs-on: ubuntu-latest
+    # Skip if commit message is version bump (prevent infinite loop)
+    if: "!contains(github.event.head_commit.message, '[auto-version]')"
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bump patch version in pubspec.yaml
+        id: bump
+        run: |
+          # Read current version from pubspec.yaml
+          CURRENT=$(grep '^version:' pubspec.yaml | sed 's/version: //')
+          VERSION=$(echo "$CURRENT" | sed 's/+.*//')
+          BUILD=$(echo "$CURRENT" | grep -oP '\+\K[0-9]+' || echo "1")
+
+          # Bump build number
+          NEW_BUILD=$((BUILD + 1))
+
+          # Check if this tag already exists
+          if git ls-remote --tags origin "v${VERSION}" | grep -q "v${VERSION}"; then
+            # Tag exists, bump patch version
+            MAJOR=$(echo "$VERSION" | cut -d. -f1)
+            MINOR=$(echo "$VERSION" | cut -d. -f2)
+            PATCH=$(echo "$VERSION" | cut -d. -f3)
+            NEW_PATCH=$((PATCH + 1))
+            VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+            NEW_BUILD=1
+          fi
+
+          NEW_VERSION="${VERSION}+${NEW_BUILD}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "full_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          echo "Bumping to: $NEW_VERSION"
+
+          # Update pubspec.yaml
+          sed -i "s/^version: .*/version: ${NEW_VERSION}/" pubspec.yaml
+
+          # Update hardcoded version in update_service.dart if exists
+          if [ -f lib/services/update_service.dart ]; then
+            sed -i "s/static const String currentVersion = '.*'/static const String currentVersion = '${VERSION}'/" lib/services/update_service.dart
+          fi
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pubspec.yaml lib/services/update_service.dart || true
+          git diff --cached --quiet || git commit -m "Bump version to ${{ steps.bump.outputs.full_version }} [auto-version]"
+          git push
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -53,16 +90,9 @@ jobs:
       - name: Build APK (split per ABI - smaller size)
         run: flutter build apk --release --split-per-abi
 
-      - name: Extract version from pubspec.yaml
-        id: version
-        run: |
-          VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //;s/+.*//')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Detected version: $VERSION"
-
       - name: Rename APKs
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ steps.bump.outputs.version }}"
 
           cp build/app/outputs/flutter-apk/app-release.apk \
              build/app/outputs/flutter-apk/aipray-${VERSION}-universal.apk
@@ -84,13 +114,12 @@ jobs:
             build/app/outputs/flutter-apk/aipray-*.apk
 
       - name: Create GitHub Release
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.version.outputs.version }}
-          name: "Aipray v${{ steps.version.outputs.version }}"
+          tag_name: v${{ steps.bump.outputs.version }}
+          name: "Aipray v${{ steps.bump.outputs.version }}"
           body: |
-            ## Aipray - สวดมนต์อัจฉริยะ
+            ## Aipray v${{ steps.bump.outputs.version }} - สวดมนต์อัจฉริยะ
 
             ### ดาวน์โหลด APK
             - **aipray-universal.apk** — ใช้ได้กับทุกอุปกรณ์ (แนะนำ)
@@ -108,7 +137,7 @@ jobs:
             - ฟังเสียงสวดจับตำแหน่งอัตโนมัติ (AI)
             - นับรอบอัตโนมัติ พร้อมสั่นเตือน
             - บันทึกประวัติการสวดมนต์
-            - ร่วมบริจาคเสียงเพื่อพัฒนา AI
+            - อัพเดทอัตโนมัติภายในแอพ
             - ใช้งานออฟไลน์ได้
           files: |
             build/app/outputs/flutter-apk/aipray-*.apk
