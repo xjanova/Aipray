@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../config/theme.dart';
+import '../models/release_notes.dart';
 import '../services/update_service.dart';
 
 class UpdateDialog extends StatefulWidget {
@@ -41,6 +42,7 @@ class _UpdateDialogState extends State<UpdateDialog>
   Widget build(BuildContext context) {
     final version = widget.updateService.latestVersion;
     if (version == null) return const SizedBox();
+    final notes = parseReleaseNotes(version.releaseNotes);
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -217,7 +219,7 @@ class _UpdateDialogState extends State<UpdateDialog>
                       ],
 
                       // Release notes
-                      if (state != UpdateState.downloading && version.releaseNotes.isNotEmpty) ...[
+                      if (state != UpdateState.downloading && notes.isNotEmpty) ...[
                         const Text(
                           'มีอะไรใหม่',
                           style: TextStyle(
@@ -230,14 +232,7 @@ class _UpdateDialogState extends State<UpdateDialog>
                         Container(
                           constraints: const BoxConstraints(maxHeight: 150),
                           child: SingleChildScrollView(
-                            child: Text(
-                              version.releaseNotes,
-                              style: const TextStyle(
-                                color: Color(0xFFAAAAAA),
-                                fontSize: 13,
-                                height: 1.5,
-                              ),
-                            ),
+                            child: _ReleaseNotes(notes),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -465,5 +460,65 @@ class _UpdateDialogState extends State<UpdateDialog>
           child: const Text('ปิด', style: TextStyle(color: Color(0xFF888888))),
         );
     }
+  }
+}
+
+/// Release notes as styled lines. Plain text only: nothing here can be tapped.
+class _ReleaseNotes extends StatelessWidget {
+  final List<NoteLine> lines;
+  const _ReleaseNotes(this.lines);
+
+  static const _style = TextStyle(
+    color: Color(0xFFAAAAAA),
+    fontSize: 13,
+    height: 1.5,
+  );
+  static const _strong = TextStyle(
+    color: Color(0xFFDDDDDD),
+    fontWeight: FontWeight.bold,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        for (final line in lines)
+          Padding(
+            padding: EdgeInsets.only(top: line.gapBefore ? 8 : 0),
+            child: _buildLine(line),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildLine(NoteLine line) {
+    final text = Text.rich(
+      TextSpan(
+        children: [
+          for (final span in line.spans)
+            TextSpan(text: span.text, style: span.bold ? _strong : null),
+        ],
+      ),
+      style: line.kind == NoteKind.heading ? _style.merge(_strong) : _style,
+    );
+    final marker = switch (line.kind) {
+      NoteKind.bullet => '•',
+      NoteKind.numbered => line.number,
+      _ => null,
+    };
+    if (marker == null) return text;
+
+    // The marker sits in its own column so wrapped lines stay indented
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 20,
+          child: Text(marker, style: _style.copyWith(color: AiprayTheme.gold)),
+        ),
+        Expanded(child: text),
+      ],
+    );
   }
 }
