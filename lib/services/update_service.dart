@@ -68,7 +68,7 @@ class AppVersion {
 }
 
 class UpdateService {
-  static const String currentVersion = '1.2.4';
+  static const String currentVersion = '1.2.5';
 
   /// The only place the app checks for or downloads updates.
   static const String host = 'xman4289.com';
