@@ -68,6 +68,8 @@ class _UpdateDialogState extends State<UpdateDialog>
         child: ValueListenableBuilder<UpdateState>(
           valueListenable: widget.updateService.state,
           builder: (context, state, _) {
+            final downloaded = state == UpdateState.readyToInstall ||
+                state == UpdateState.installing;
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -117,7 +119,7 @@ class _UpdateDialogState extends State<UpdateDialog>
                               ],
                             ),
                             child: Icon(
-                              state == UpdateState.readyToInstall
+                              downloaded
                                   ? Icons.check_circle
                                   : state == UpdateState.downloading
                                       ? Icons.downloading
@@ -130,7 +132,7 @@ class _UpdateDialogState extends State<UpdateDialog>
                       ),
                       const SizedBox(height: 16),
                       Text(
-                        state == UpdateState.readyToInstall
+                        downloaded
                             ? 'พร้อมติดตั้ง!'
                             : state == UpdateState.downloading
                                 ? 'กำลังดาวน์โหลด...'
@@ -394,8 +396,10 @@ class _UpdateDialogState extends State<UpdateDialog>
               height: 48,
               child: ElevatedButton(
                 onPressed: () async {
+                  // A second tap before the rebuild would report a failure
+                  if (widget.updateService.state.value != UpdateState.readyToInstall) return;
                   final success = await widget.updateService.installUpdate();
-                  if (!context.mounted) return;
+                  if (!mounted) return;
                   if (success) {
                     Navigator.pop(context);
                   } else {
@@ -434,6 +438,25 @@ class _UpdateDialogState extends State<UpdateDialog>
               ),
             ),
           ],
+        );
+
+      case UpdateState.installing:
+        return SizedBox(
+          width: double.infinity,
+          height: 48,
+          child: OutlinedButton(
+            onPressed: null,
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: AiprayTheme.gold.withValues(alpha: 0.3)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+            child: const Text(
+              'กำลังเปิดตัวติดตั้ง...',
+              style: TextStyle(color: Color(0xFF888888)),
+            ),
+          ),
         );
 
       default:
