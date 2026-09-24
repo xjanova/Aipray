@@ -91,35 +91,22 @@ jobs:
       - name: Analyze code
         run: flutter analyze --no-fatal-infos
 
-      - name: Build APK (fat APK - all ABIs)
+      # Universal APK only. Customers get it from xman4289.com (site and in-app
+      # updater), and split-per-ABI builds would carry versionCodes 1000-4000
+      # higher, which blocks later universal updates on phones that have one.
+      - name: Build APK (universal - all ABIs)
         run: flutter build apk --release
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
-      - name: Build APK (split per ABI - smaller size)
-        run: flutter build apk --release --split-per-abi
-        env:
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-
-      - name: Rename APKs
+      - name: Rename APK
         run: |
           VERSION="${{ steps.bump.outputs.version }}"
 
           cp build/app/outputs/flutter-apk/app-release.apk \
              build/app/outputs/flutter-apk/aipray-${VERSION}-universal.apk
-
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
-             build/app/outputs/flutter-apk/aipray-${VERSION}-arm64.apk
-
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk \
-             build/app/outputs/flutter-apk/aipray-${VERSION}-arm32.apk
-
-          cp build/app/outputs/flutter-apk/app-x86_64-release.apk \
-             build/app/outputs/flutter-apk/aipray-${VERSION}-x86_64.apk
 
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
@@ -136,13 +123,8 @@ jobs:
           body: |
             ## Aipray v${{ steps.bump.outputs.version }} - สวดมนต์อัจฉริยะ
 
-            ### ดาวน์โหลด APK
-            - **aipray-universal.apk** — ใช้ได้กับทุกอุปกรณ์ (แนะนำ)
-            - **aipray-arm64.apk** — สำหรับมือถือรุ่นใหม่ (เล็กกว่า)
-            - **aipray-arm32.apk** — สำหรับมือถือรุ่นเก่า
-
             ### วิธีติดตั้ง
-            1. ดาวน์โหลดไฟล์ APK ที่ตรงกับอุปกรณ์ (ไม่แน่ใจให้เลือก universal)
+            1. ดาวน์โหลดไฟล์ APK จาก xman4289.com (ใช้ได้กับมือถือ Android ทุกรุ่น)
             2. เปิดไฟล์บนมือถือ Android
             3. อนุญาต "ติดตั้งจากแหล่งที่ไม่รู้จัก" ถ้ามี popup
             4. กด "ติดตั้ง"

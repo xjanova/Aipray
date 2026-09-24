@@ -141,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       ValueListenableBuilder<UpdateState>(
                         valueListenable: updateService.state,
                         builder: (context, state, _) {
-                          if (state == UpdateState.updateAvailable) {
+                          if (updateService.hasPendingUpdate) {
                             return GestureDetector(
                               onTap: () => UpdateDialog.show(context, updateService),
                               child: Container(

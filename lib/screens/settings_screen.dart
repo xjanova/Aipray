@@ -175,7 +175,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             style: TextStyle(color: Colors.white, fontSize: 15),
                           ),
                           Text(
-                            'ดาวน์โหลดเวอร์ชันใหม่จาก GitHub',
+                            'ดาวน์โหลดเวอร์ชันใหม่จาก xman4289.com',
                             style: TextStyle(color: Color(0xFF888888), fontSize: 12),
                           ),
                         ],
@@ -191,18 +191,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             child: CircularProgressIndicator(strokeWidth: 2, color: AiprayTheme.gold),
                           );
                         }
-                        if (state == UpdateState.updateAvailable) {
-                          return Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFF10B981).withValues(alpha: 0.15),
-                              borderRadius: BorderRadius.circular(8),
+                        if (updateService.hasPendingUpdate) {
+                          return GestureDetector(
+                            onTap: () => UpdateDialog.show(context, updateService),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF10B981).withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Text('มีอัปเดต!', style: TextStyle(color: Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.bold)),
                             ),
-                            child: const Text('มีอัปเดต!', style: TextStyle(color: Color(0xFF10B981), fontSize: 12, fontWeight: FontWeight.bold)),
                           );
                         }
                         return GestureDetector(
                           onTap: () async {
+                            // A second tap before the spinner shows would open a second dialog
+                            if (updateService.state.value != UpdateState.idle) return;
                             final result = await updateService.checkForUpdate(force: true);
                             if (!context.mounted) return;
                             if (result == UpdateCheckResult.updateAvailable) {
